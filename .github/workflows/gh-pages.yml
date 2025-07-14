@@ -40,7 +40,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: "zig-out/doc/lsp-codegen"
+          path: "zig-out/doc/lsp-kit"
 
       - name: Deploy to GitHub Pages
         id: deployment

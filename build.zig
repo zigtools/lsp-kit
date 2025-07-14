@@ -69,7 +69,7 @@ pub fn build(b: *std.Build) void {
     const install_docs = b.addInstallDirectory(.{
         .source_dir = autodoc_exe.getEmittedDocs(),
         .install_dir = .prefix,
-        .install_subdir = "doc/lsp-codegen",
+        .install_subdir = "doc/lsp-kit",
     });
 
     const docs_step = b.step("docs", "Generate and install documentation");

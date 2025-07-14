@@ -1,5 +1,5 @@
 .{
-    .name = .lsp_codegen,
+    .name = .lsp_kit,
     .version = "0.1.0",
     .minimum_zig_version = "0.15.0-dev.1023+f551c7c58",
     .dependencies = .{},
@@ -11,5 +11,5 @@
         "LICENSE",
         "README.md",
     },
-    .fingerprint = 0x8c3c9a64a3e3c808, // Changing this has security and trust implications.
+    .fingerprint = 0x91a538b12fcf2f6e, // Changing this has security and trust implications.
 }

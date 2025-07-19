@@ -1339,18 +1339,7 @@ pub fn readJsonMessage(
     allocator: std.mem.Allocator,
 ) (std.io.Reader.Error || std.mem.Allocator.Error || BaseProtocolHeader.ParseError)![]u8 {
     const header: BaseProtocolHeader = try .parse(reader);
-
-    // Use `readAlloc` once https://github.com/ziglang/zig/issues/24443 has been resolved:
-    // return try reader.readAlloc(allocator, header.content_length);
-
-    const json_message = try allocator.alloc(u8, header.content_length);
-    errdefer allocator.free(json_message);
-    var writer: std.io.Writer = .fixed(json_message);
-    reader.streamExact(&writer, json_message.len) catch |err| switch (err) {
-        error.ReadFailed, error.EndOfStream => |e| return e,
-        error.WriteFailed => unreachable, // fixed buffer
-    };
-    return json_message;
+    return try reader.readAlloc(allocator, header.content_length);
 }
 
 test readJsonMessage {

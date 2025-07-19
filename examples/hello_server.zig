@@ -131,7 +131,7 @@ pub fn main() !void {
                         continue;
                     }
 
-                    const formatte_source = try tree.render(gpa);
+                    const formatte_source = try tree.renderAlloc(gpa);
                     defer gpa.free(formatte_source);
 
                     if (std.mem.eql(u8, source, formatte_source)) {

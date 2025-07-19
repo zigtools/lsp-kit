@@ -1,10 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const minimum_zig_version = "0.15.0-dev.1018+1a998886c";
+const minimum_zig_version = "0.15.0-dev.1145+3ae0ba096";
 
 pub fn build(b: *std.Build) void {
-    comptime if (builtin.zig_version.order(std.SemanticVersion.parse("0.15.0-dev.1018+1a998886c") catch unreachable) == .lt) {
+    comptime if (builtin.zig_version.order(std.SemanticVersion.parse(minimum_zig_version) catch unreachable) == .lt) {
         @compileError(std.fmt.comptimePrint(
             \\Your Zig version does not meet the minimum build requirement:
             \\  required Zig version: {[minimum_zig_version]s}

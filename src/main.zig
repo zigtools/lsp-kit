@@ -30,18 +30,21 @@ pub fn main() !void {
     var zig_tree: std.zig.Ast = try .parse(gpa, source, .zig);
     defer zig_tree.deinit(gpa);
 
-    const output_source = if (zig_tree.errors.len != 0) blk: {
-        std.log.warn("generated file contains syntax errors! (cannot format file)", .{});
-        break :blk source;
-    } else try zig_tree.render(gpa);
-    defer if (zig_tree.errors.len == 0) gpa.free(output_source);
-
     std.fs.cwd().makePath(std.fs.path.dirname(out_file_path) orelse ".") catch {};
 
     var out_file = try std.fs.cwd().createFile(out_file_path, .{});
     defer out_file.close();
 
-    try out_file.writeAll(output_source);
+    if (zig_tree.errors.len != 0) {
+        std.log.warn("generated file contains syntax errors! (cannot format file)", .{});
+        try out_file.writeAll(source);
+    } else {
+        var buf: [1024]u8 = undefined;
+        var out = out_file.writer(&buf);
+        const w = &out.interface;
+        try zig_tree.render(gpa, w, .{});
+        try w.flush();
+    }
 }
 
 const FormatDocs = struct {

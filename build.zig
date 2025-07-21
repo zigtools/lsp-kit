@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const minimum_zig_version = "0.15.0-dev.1145+3ae0ba096";
+const minimum_zig_version = "0.15.0-dev.1160+e43617e68";
 
 pub fn build(b: *std.Build) void {
     comptime if (builtin.zig_version.order(std.SemanticVersion.parse(minimum_zig_version) catch unreachable) == .lt) {

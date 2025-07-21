@@ -707,23 +707,23 @@ pub const JsonRPCMessage = union(enum) {
     test "emit_null_optional_fields" {
         try std.testing.expectFmt(
             \\{"jsonrpc":"2.0","method":"exit"}
-        , "{f}", .{parser.jsonFmt(JsonRPCMessage{ .notification = .{ .method = "exit", .params = null } }, .{ .emit_null_optional_fields = false })});
+        , "{f}", .{std.json.fmt(JsonRPCMessage{ .notification = .{ .method = "exit", .params = null } }, .{ .emit_null_optional_fields = false })});
         try std.testing.expectFmt(
             \\{"jsonrpc":"2.0","method":"exit","params":null}
-        , "{f}", .{parser.jsonFmt(JsonRPCMessage{ .notification = .{ .method = "exit", .params = null } }, .{ .emit_null_optional_fields = true })});
+        , "{f}", .{std.json.fmt(JsonRPCMessage{ .notification = .{ .method = "exit", .params = null } }, .{ .emit_null_optional_fields = true })});
         try std.testing.expectFmt(
             \\{"jsonrpc":"2.0","method":"exit","params":null}
-        , "{f}", .{parser.jsonFmt(JsonRPCMessage{ .notification = .{ .method = "exit", .params = .null } }, .{ .emit_null_optional_fields = false })});
+        , "{f}", .{std.json.fmt(JsonRPCMessage{ .notification = .{ .method = "exit", .params = .null } }, .{ .emit_null_optional_fields = false })});
         try std.testing.expectFmt(
             \\{"jsonrpc":"2.0","method":"exit","params":null}
-        , "{f}", .{parser.jsonFmt(JsonRPCMessage{ .notification = .{ .method = "exit", .params = .null } }, .{ .emit_null_optional_fields = true })});
+        , "{f}", .{std.json.fmt(JsonRPCMessage{ .notification = .{ .method = "exit", .params = .null } }, .{ .emit_null_optional_fields = true })});
 
         try std.testing.expectFmt(
             \\{"jsonrpc":"2.0","result":null}
-        , "{f}", .{parser.jsonFmt(JsonRPCMessage{ .response = .{ .id = null, .result_or_error = .{ .result = null } } }, .{ .emit_null_optional_fields = false })});
+        , "{f}", .{std.json.fmt(JsonRPCMessage{ .response = .{ .id = null, .result_or_error = .{ .result = null } } }, .{ .emit_null_optional_fields = false })});
         try std.testing.expectFmt(
             \\{"jsonrpc":"2.0","id":null,"result":null}
-        , "{f}", .{parser.jsonFmt(JsonRPCMessage{ .response = .{ .id = null, .result_or_error = .{ .result = null } } }, .{ .emit_null_optional_fields = true })});
+        , "{f}", .{std.json.fmt(JsonRPCMessage{ .response = .{ .id = null, .result_or_error = .{ .result = null } } }, .{ .emit_null_optional_fields = true })});
     }
 
     fn testParse(message: []const u8, expected: JsonRPCMessage, parse_options: std.json.ParseOptions) !void {
@@ -738,10 +738,10 @@ pub const JsonRPCMessage = union(enum) {
         const parsed_from_value = try std.json.parseFromValue(JsonRPCMessage, allocator, parsed_value.value, parse_options);
         defer parsed_from_value.deinit();
 
-        const from_slice_stringified = try std.json.stringifyAlloc(allocator, parsed_from_slice.value, .{ .whitespace = .indent_2 });
+        const from_slice_stringified = try std.json.Stringify.valueAlloc(allocator, parsed_from_slice.value, .{ .whitespace = .indent_2 });
         defer allocator.free(from_slice_stringified);
 
-        const from_value_stringified = try std.json.stringifyAlloc(allocator, parsed_from_value.value, .{ .whitespace = .indent_2 });
+        const from_value_stringified = try std.json.Stringify.valueAlloc(allocator, parsed_from_value.value, .{ .whitespace = .indent_2 });
         defer allocator.free(from_value_stringified);
 
         if (!std.mem.eql(u8, from_slice_stringified, from_value_stringified)) {
@@ -872,13 +872,13 @@ test TypedJsonRPCRequest {
 
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","id":42,"method":"name","params":null}
-    , "{f}", .{parser.jsonFmt(Request{ .id = .{ .number = 42 }, .method = "name", .params = null }, .{})});
+    , "{f}", .{std.json.fmt(Request{ .id = .{ .number = 42 }, .method = "name", .params = null }, .{})});
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","id":"42","method":"name"}
-    , "{f}", .{parser.jsonFmt(Request{ .id = .{ .string = "42" }, .method = "name", .params = null }, .{ .emit_null_optional_fields = false })});
+    , "{f}", .{std.json.fmt(Request{ .id = .{ .string = "42" }, .method = "name", .params = null }, .{ .emit_null_optional_fields = false })});
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","id":42,"method":"name","params":true}
-    , "{f}", .{parser.jsonFmt(Request{ .id = .{ .number = 42 }, .method = "name", .params = true }, .{})});
+    , "{f}", .{std.json.fmt(Request{ .id = .{ .number = 42 }, .method = "name", .params = true }, .{})});
 }
 
 pub fn TypedJsonRPCNotification(
@@ -924,13 +924,13 @@ test TypedJsonRPCNotification {
 
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","method":"name","params":null}
-    , "{f}", .{parser.jsonFmt(Notification{ .method = "name", .params = null }, .{})});
+    , "{f}", .{std.json.fmt(Notification{ .method = "name", .params = null }, .{})});
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","method":"name"}
-    , "{f}", .{parser.jsonFmt(Notification{ .method = "name", .params = null }, .{ .emit_null_optional_fields = false })});
+    , "{f}", .{std.json.fmt(Notification{ .method = "name", .params = null }, .{ .emit_null_optional_fields = false })});
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","method":"name","params":true}
-    , "{f}", .{parser.jsonFmt(Notification{ .method = "name", .params = true }, .{})});
+    , "{f}", .{std.json.fmt(Notification{ .method = "name", .params = true }, .{})});
 }
 
 pub fn TypedJsonRPCResponse(
@@ -982,13 +982,13 @@ test TypedJsonRPCResponse {
 
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"message","data":null}}
-    , "{f}", .{parser.jsonFmt(Response{
+    , "{f}", .{std.json.fmt(Response{
         .id = null,
         .result_or_error = .{ .@"error" = .{ .code = .invalid_request, .message = "message", .data = .null } },
     }, .{})});
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","id":5,"result":true}
-    , "{f}", .{parser.jsonFmt(Response{
+    , "{f}", .{std.json.fmt(Response{
         .id = .{ .number = 5 },
         .result_or_error = .{ .result = true },
     }, .{})});
@@ -1205,14 +1205,14 @@ pub const Transport = struct {
         method: []const u8,
         comptime Params: type,
         params: Params,
-        options: std.json.StringifyOptions,
+        options: std.json.Stringify.Options,
     ) (WriteError || std.mem.Allocator.Error)!void {
         const request: TypedJsonRPCRequest(Params) = .{
             .id = id,
             .method = method,
             .params = params,
         };
-        const json_message = try std.json.stringifyAlloc(allocator, request, options);
+        const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
         defer allocator.free(json_message);
         try transport.writeJsonMessage(json_message);
     }
@@ -1223,13 +1223,13 @@ pub const Transport = struct {
         method: []const u8,
         comptime Params: type,
         params: Params,
-        options: std.json.StringifyOptions,
+        options: std.json.Stringify.Options,
     ) (WriteError || std.mem.Allocator.Error)!void {
         const request: TypedJsonRPCNotification(Params) = .{
             .method = method,
             .params = params,
         };
-        const json_message = try std.json.stringifyAlloc(allocator, request, options);
+        const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
         defer allocator.free(json_message);
         try transport.writeJsonMessage(json_message);
     }
@@ -1240,13 +1240,13 @@ pub const Transport = struct {
         id: ?JsonRPCMessage.ID,
         comptime Result: type,
         result: Result,
-        options: std.json.StringifyOptions,
+        options: std.json.Stringify.Options,
     ) (WriteError || std.mem.Allocator.Error)!void {
         const request: TypedJsonRPCResponse(Result) = .{
             .id = id,
             .result_or_error = .{ .result = result },
         };
-        const json_message = try std.json.stringifyAlloc(allocator, request, options);
+        const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
         defer allocator.free(json_message);
         try transport.writeJsonMessage(json_message);
     }
@@ -1256,13 +1256,13 @@ pub const Transport = struct {
         allocator: std.mem.Allocator,
         id: ?JsonRPCMessage.ID,
         err: JsonRPCMessage.Response.Error,
-        options: std.json.StringifyOptions,
+        options: std.json.Stringify.Options,
     ) (WriteError || std.mem.Allocator.Error)!void {
         const request: TypedJsonRPCResponse(void) = .{
             .id = id,
             .result_or_error = .{ .@"error" = err },
         };
-        const json_message = try std.json.stringifyAlloc(allocator, request, options);
+        const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
         defer allocator.free(json_message);
         try transport.writeJsonMessage(json_message);
     }
@@ -1375,14 +1375,14 @@ pub fn writeRequest(
     method: []const u8,
     comptime Params: type,
     params: Params,
-    options: std.json.StringifyOptions,
+    options: std.json.Stringify.Options,
 ) (std.io.Writer.Error || std.mem.Allocator.Error)!void {
     const request: TypedJsonRPCRequest(Params) = .{
         .id = id,
         .method = method,
         .params = params,
     };
-    const json_message = try std.json.stringifyAlloc(allocator, request, options);
+    const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
     defer allocator.free(json_message);
     try writeJsonMessage(writer, json_message);
 }
@@ -1418,13 +1418,13 @@ pub fn writeNotification(
     method: []const u8,
     comptime Params: type,
     params: Params,
-    options: std.json.StringifyOptions,
+    options: std.json.Stringify.Options,
 ) (std.io.Writer.Error || std.mem.Allocator.Error)!void {
     const request: TypedJsonRPCNotification(Params) = .{
         .method = method,
         .params = params,
     };
-    const json_message = try std.json.stringifyAlloc(allocator, request, options);
+    const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
     defer allocator.free(json_message);
     try writeJsonMessage(writer, json_message);
 }
@@ -1458,13 +1458,13 @@ pub fn writeResponse(
     id: ?JsonRPCMessage.ID,
     comptime Result: type,
     result: Result,
-    options: std.json.StringifyOptions,
+    options: std.json.Stringify.Options,
 ) (std.io.Writer.Error || std.mem.Allocator.Error)!void {
     const request: TypedJsonRPCResponse(Result) = .{
         .id = id,
         .result_or_error = .{ .result = result },
     };
-    const json_message = try std.json.stringifyAlloc(allocator, request, options);
+    const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
     defer allocator.free(json_message);
     try writeJsonMessage(writer, json_message);
 }
@@ -1497,13 +1497,13 @@ pub fn writeErrorResponse(
     allocator: std.mem.Allocator,
     id: ?JsonRPCMessage.ID,
     err: JsonRPCMessage.Response.Error,
-    options: std.json.StringifyOptions,
+    options: std.json.Stringify.Options,
 ) (std.io.Writer.Error || std.mem.Allocator.Error)!void {
     const request: TypedJsonRPCResponse(void) = .{
         .id = id,
         .result_or_error = .{ .@"error" = err },
     };
-    const json_message = try std.json.stringifyAlloc(allocator, request, options);
+    const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
     defer allocator.free(json_message);
     try writeJsonMessage(writer, json_message);
 }
@@ -1571,7 +1571,7 @@ fn bufPrintLogMessageTypeErased(
     var writer: std.io.Writer = .fixed(buffer);
     writer.print(
         \\{{"jsonrpc":"2.0","method":"window/logMessage","params":{{"type":{f},"message":"
-    , .{parser.jsonFmt(message_type, .{})}) catch unreachable;
+    , .{std.json.fmt(message_type, .{})}) catch unreachable;
 
     const json_message_suffix = "\"}}".*;
     const ellipses = "...".*;
@@ -2332,9 +2332,9 @@ fn testMessageWithOptions(
     const message_from_value = try std.json.parseFromValueLeaky(ExampleMessage, arena.allocator(), value, parse_options);
     const message_from_slice = try ExampleMessage.parseFromSliceLeaky(arena.allocator(), json_message, parse_options);
 
-    const message_string = try std.json.stringifyAlloc(arena.allocator(), message, .{ .whitespace = .indent_2 });
-    const message_from_value_string = try std.json.stringifyAlloc(arena.allocator(), message_from_value, .{ .whitespace = .indent_2 });
-    const message_from_slice_string = try std.json.stringifyAlloc(arena.allocator(), message_from_slice, .{ .whitespace = .indent_2 });
+    const message_string = try std.json.Stringify.valueAlloc(arena.allocator(), message, .{ .whitespace = .indent_2 });
+    const message_from_value_string = try std.json.Stringify.valueAlloc(arena.allocator(), message_from_value, .{ .whitespace = .indent_2 });
+    const message_from_slice_string = try std.json.Stringify.valueAlloc(arena.allocator(), message_from_slice, .{ .whitespace = .indent_2 });
 
     try std.testing.expectEqualStrings(message_string, message_from_value_string);
     try std.testing.expectEqualStrings(message_string, message_from_slice_string);
@@ -2422,23 +2422,23 @@ test "Message - ignore_unknown_fields" {
 test "Message - stringify emit_null_optional_fields" {
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","method":"exit"}
-    , "{f}", .{parser.jsonFmt(ExampleMessage{ .notification = .{ .params = .exit } }, .{ .emit_null_optional_fields = false })});
+    , "{f}", .{std.json.fmt(ExampleMessage{ .notification = .{ .params = .exit } }, .{ .emit_null_optional_fields = false })});
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","method":"exit","params":null}
-    , "{f}", .{parser.jsonFmt(ExampleMessage{ .notification = .{ .params = .exit } }, .{ .emit_null_optional_fields = true })});
+    , "{f}", .{std.json.fmt(ExampleMessage{ .notification = .{ .params = .exit } }, .{ .emit_null_optional_fields = true })});
 
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","method":"foo"}
-    , "{f}", .{parser.jsonFmt(ExampleMessage{ .notification = .{ .params = .{ .other = .{ .method = "foo", .params = null } } } }, .{ .emit_null_optional_fields = false })});
+    , "{f}", .{std.json.fmt(ExampleMessage{ .notification = .{ .params = .{ .other = .{ .method = "foo", .params = null } } } }, .{ .emit_null_optional_fields = false })});
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","method":"foo","params":null}
-    , "{f}", .{parser.jsonFmt(ExampleMessage{ .notification = .{ .params = .{ .other = .{ .method = "foo", .params = null } } } }, .{ .emit_null_optional_fields = true })});
+    , "{f}", .{std.json.fmt(ExampleMessage{ .notification = .{ .params = .{ .other = .{ .method = "foo", .params = null } } } }, .{ .emit_null_optional_fields = true })});
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","method":"foo","params":null}
-    , "{f}", .{parser.jsonFmt(ExampleMessage{ .notification = .{ .params = .{ .other = .{ .method = "foo", .params = .null } } } }, .{ .emit_null_optional_fields = false })});
+    , "{f}", .{std.json.fmt(ExampleMessage{ .notification = .{ .params = .{ .other = .{ .method = "foo", .params = .null } } } }, .{ .emit_null_optional_fields = false })});
     try std.testing.expectFmt(
         \\{"jsonrpc":"2.0","method":"foo","params":null}
-    , "{f}", .{parser.jsonFmt(ExampleMessage{ .notification = .{ .params = .{ .other = .{ .method = "foo", .params = .null } } } }, .{ .emit_null_optional_fields = true })});
+    , "{f}", .{std.json.fmt(ExampleMessage{ .notification = .{ .params = .{ .other = .{ .method = "foo", .params = .null } } } }, .{ .emit_null_optional_fields = true })});
 }
 
 test "Message.Request" {

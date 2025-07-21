@@ -338,14 +338,14 @@ fn writeRequest(writer: *std.io.Writer, meta_model: MetaModel, request: MetaMode
         \\
     , .{
         request.method,
-        if (request.documentation) |documentation| jsonFmt(documentation, .{}) else null,
+        if (request.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
         messageDirectionName(request.messageDirection),
         // NOTE: Multiparams not used here, so we dont have to implement them :)
         if (request.params) |params| fmtType(params.Type, &meta_model) else null,
         fmtType(request.result, &meta_model),
         if (request.partialResult) |ty| fmtType(ty, &meta_model) else null,
         if (request.errorData) |ty| fmtType(ty, &meta_model) else null,
-        if (request.registrationMethod) |method| jsonFmt(method, .{}) else null,
+        if (request.registrationMethod) |method| std.json.fmt(method, .{}) else null,
         if (request.registrationOptions) |ty| fmtType(ty, &meta_model) else null,
     });
 }
@@ -364,11 +364,11 @@ fn writeNotification(writer: *std.io.Writer, meta_model: MetaModel, notification
         \\
     , .{
         notification.method,
-        if (notification.documentation) |documentation| jsonFmt(documentation, .{}) else null,
+        if (notification.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
         messageDirectionName(notification.messageDirection),
         // NOTE: Multiparams not used here, so we dont have to implement them :)
         if (notification.params) |params| fmtType(params.Type, &meta_model) else null,
-        if (notification.registrationMethod) |method| jsonFmt(method, .{}) else null,
+        if (notification.registrationMethod) |method| std.json.fmt(method, .{}) else null,
         if (notification.registrationOptions) |ty| fmtType(ty, &meta_model) else null,
     });
 }
@@ -478,24 +478,4 @@ fn writeMetaModel(writer: *std.io.Writer, meta_model: MetaModel) std.io.Writer.E
         try writeRequest(writer, meta_model, request);
     }
     try writer.writeAll("};\n");
-}
-
-/// Like `std.json.fmt` but supports `std.io.Writer`.
-pub fn jsonFmt(value: anytype, options: std.json.StringifyOptions) std.fmt.Alt(FormatJson(@TypeOf(value)), FormatJson(@TypeOf(value)).format) {
-    return .{ .data = .{ .value = value, .options = options } };
-}
-
-fn FormatJson(comptime T: type) type {
-    return struct {
-        value: T,
-        options: std.json.StringifyOptions,
-
-        pub fn format(data: @This(), writer: *std.io.Writer) std.io.Writer.Error!void {
-            const any_writer: std.io.AnyWriter = .{
-                .context = @ptrCast(writer),
-                .writeFn = @ptrCast(&std.io.Writer.write),
-            };
-            std.json.stringify(data.value, data.options, any_writer) catch |err| return @errorCast(err);
-        }
-    };
 }

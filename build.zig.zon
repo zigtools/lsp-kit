@@ -1,7 +1,7 @@
 .{
     .name = .lsp_kit,
     .version = "0.1.0",
-    .minimum_zig_version = "0.15.0-dev.1145+3ae0ba096",
+    .minimum_zig_version = "0.15.0-dev.1160+e43617e68",
     .dependencies = .{},
     .paths = .{
         "build.zig",

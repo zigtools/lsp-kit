@@ -602,9 +602,10 @@ fn MessageType(comptime Handler: type) type {
 
         var union_fields: [methods.len + 1]std.builtin.Type.UnionField = undefined;
         for (union_fields[0 .. union_fields.len - 1], methods) |*field, method| {
-            field.* = .{ .name = method, .type = lsp.ParamsType(method), .alignment = 0 };
+            const field_type = lsp.ParamsType(method);
+            field.* = .{ .name = method, .type = field_type, .alignment = @alignOf(field_type) };
         }
-        union_fields[methods.len] = .{ .name = "other", .type = lsp.MethodWithParams, .alignment = 0 };
+        union_fields[methods.len] = .{ .name = "other", .type = lsp.MethodWithParams, .alignment = @alignOf(lsp.MethodWithParams) };
 
         Params.* = @Type(.{ .@"union" = .{
             .layout = .auto,

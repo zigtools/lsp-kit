@@ -1172,6 +1172,7 @@ pub const Transport = struct {
             const stdio: *Stdio = @fieldParentPtr("transport", transport);
             var file_reader: std.fs.File.Reader = .{
                 .file = stdio.read_from,
+                .mode = .streaming_reading,
                 .interface = stdio.reader,
             };
             defer stdio.reader = file_reader.interface;
@@ -1183,7 +1184,7 @@ pub const Transport = struct {
 
         fn writeJsonMessage(transport: *Transport, json_message: []const u8) WriteError!void {
             const stdio: *Stdio = @fieldParentPtr("transport", transport);
-            var file_writer = stdio.write_to.writer(&.{});
+            var file_writer: std.fs.File.Writer = .initMode(stdio.write_to, &.{}, .streaming);
             return lsp.writeJsonMessage(&file_writer.interface, json_message) catch |err| switch (err) {
                 error.WriteFailed => return file_writer.err.?,
             };

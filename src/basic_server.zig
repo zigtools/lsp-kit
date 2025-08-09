@@ -87,11 +87,11 @@ pub fn run(
                     if (callHandler(handler_ptr, method, .{ arena, params })) |result| {
                         if (@TypeOf(result) != lsp.ResultType(method)) {
                             @compileError(std.fmt.comptimePrint(
-                                \\The '{s}.{}' function has an unexpected result type:
+                                \\The '{}.{f}' function has an unexpected result type:
                                 \\
-                                \\Expected: {s}
-                                \\Actual:   {s}
-                            , .{ @typeName(Handler), std.zig.fmtId(method), @typeName(lsp.ResultType(method)), @typeName(@TypeOf(result)) }));
+                                \\Expected: {}
+                                \\Actual:   {}
+                            , .{ Handler, std.zig.fmtId(method), lsp.ResultType(method), @TypeOf(result) }));
                         }
                         try transport.writeResponse(
                             allocator,
@@ -159,11 +159,11 @@ pub fn run(
                     if (callHandler(handler_ptr, method, .{ arena, params })) |result| {
                         if (@TypeOf(result) != void) {
                             @compileError(std.fmt.comptimePrint(
-                                \\The '{s}.{}' function has an unexpected result type:
+                                \\The '{}.{f}' function has an unexpected result type:
                                 \\
                                 \\Expected: void
-                                \\Actual:   {s}
-                            , .{ @typeName(Handler), std.zig.fmtId(method), @typeName(@TypeOf(result)) }));
+                                \\Actual:   {}
+                            , .{ Handler, std.zig.fmtId(method), @TypeOf(result) }));
                         }
                     } else |err| {
                         if (logErr) |log| log("Failed to handle '{s}' notification: {}", .{ method, err });
@@ -620,7 +620,7 @@ fn MessageType(comptime Handler: type) type {
 
 fn CallHandlerReturnType(comptime Handler: type, comptime fn_name: []const u8) type {
     if (!@hasDecl(Handler, fn_name) and !@hasField(Handler, fn_name)) {
-        @compileError(std.fmt.comptimePrint("Could not find '{s}.{}'", .{ @typeName(Handler), std.zig.fmtId(fn_name) }));
+        @compileError(std.fmt.comptimePrint("Could not find '{}.{f}'", .{ Handler, std.zig.fmtId(fn_name) }));
     }
     const func = @field(Handler, fn_name);
     const FuncUnwrapped = switch (@typeInfo(@TypeOf(func))) {
@@ -632,7 +632,7 @@ fn CallHandlerReturnType(comptime Handler: type, comptime fn_name: []const u8) t
     };
     const ReturnType = switch (@typeInfo(FuncUnwrapped)) {
         .@"fn" => |info| info.return_type.?,
-        else => @compileError(std.fmt.comptimePrint("Expected '{s}.{}' to be a function but was '{s}'", .{ @typeName(Handler), std.zig.fmtId(fn_name), @typeName(FuncUnwrapped) })),
+        else => @compileError(std.fmt.comptimePrint("Expected '{}.{f}' to be a function but was '{}'", .{ Handler, std.zig.fmtId(fn_name), FuncUnwrapped })),
     };
     return switch (@typeInfo(ReturnType)) {
         .error_union, .error_set => ReturnType,

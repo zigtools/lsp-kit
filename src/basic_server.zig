@@ -565,14 +565,37 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
     }) |method_name, status| {
         switch (status) {
             .disabled => {
-                if (@hasDecl(Handler, method_name)) {
-                    std.debug.panic("The client capabilities indicates that the '{s}' method is not implemented but it has been implemented in the Handler", .{method_name});
+                if (@hasDecl(Handler, method_name) or @hasField(Handler, method_name)) {
+                    std.debug.panic(
+                        \\The LSP method {}.{f} has been implemented but the server capabilities still indicate that the method hasn't been implemented.
+                        \\
+                        \\Ensure that the server capabilities which are returned during `initialize` match the implemented method.
+                    , .{
+                        Handler,
+                        std.zig.fmtId(method_name),
+                    });
                 }
             },
             .allowed => {},
             .expected => {
-                if (!@hasDecl(Handler, method_name)) {
-                    std.debug.panic("The '{s}' method has been implemented in the Handler but the client capabilities indicates that the method is not implemented", .{method_name});
+                if (!@hasDecl(Handler, method_name) and !@hasField(Handler, method_name)) {
+                    std.debug.panic(
+                        \\The server capabilities indicate that {f} is implemented in `{}` but the expected function could not be found.
+                        \\
+                        \\Make sure that a public function with the following signature has been added:
+                        \\pub fn {f}(
+                        \\    handler: *Handler,
+                        \\    arena: std.mem.Allocator,
+                        \\    params: {},
+                        \\) {} {{}}
+                        \\ 
+                    , .{
+                        std.zig.fmtId(method_name),
+                        Handler,
+                        std.zig.fmtId(method_name),
+                        lsp.ParamsType(method_name),
+                        lsp.ResultType(method_name),
+                    });
                 }
             },
         }

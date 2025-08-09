@@ -1716,7 +1716,7 @@ test "bufPrintLogMessage - avoid buffer overflow with escape codes" {
     const json_message = bufPrintLogMessage(
         &buffer,
         @enumFromInt(42),
-        "\x00" ** 128,
+        &@as(@TypeOf(buffer), @splat('\x00')),
         .{},
     );
 

@@ -16,9 +16,11 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
-    // language server typically communicate over stdio (stdin and stdout)
+    // LSP implementations typically communicate over stdio (stdin and stdout)
     var transport: lsp.TransportOverStdio = .init(std.io.getStdIn(), std.io.getStdOut());
 
+    // The handler is a user provided type that stores the state of the
+    // language server and provides callbacks for the desired LSP messages.
     var handler: Handler = .init(gpa);
     defer handler.deinit();
 
@@ -35,12 +37,18 @@ pub fn main() !void {
 pub const Handler = struct {
     allocator: std.mem.Allocator,
     files: std.StringHashMapUnmanaged([]u8),
+    /// The LSP protocol specifies position inside a text document using a line and character pair.
+    /// This field stores encoding is used for the character value (UTF-8, UTF-16, UTF-32).
+    ///
+    /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocuments
     offset_encoding: lsp.offsets.Encoding,
 
     fn init(allocator: std.mem.Allocator) Handler {
         return .{
             .allocator = allocator,
             .files = .{},
+            // The default position encoding is UTF-16.
+            // The agreed upon encoding between server client is actually decided during `initialize`.
             .offset_encoding = .@"utf-16",
         };
     }

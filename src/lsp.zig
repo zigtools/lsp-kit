@@ -1554,7 +1554,7 @@ pub fn bufPrintLogMessage(
         message_type,
         struct {
             fn format(writer: *std.io.Writer, opaque_params: *const anyopaque) std.io.Writer.Error!void {
-                return writer.print(fmt, @as(*const @TypeOf(args), @alignCast(@ptrCast(opaque_params))).*);
+                return writer.print(fmt, @as(*const @TypeOf(args), @ptrCast(@alignCast(opaque_params))).*);
             }
         }.format,
         &args,

@@ -19,7 +19,7 @@ pub fn run(
     /// Must be a pointer to a container type (e.g. `struct`) that implements
     /// the desired LSP methods.
     ///
-    /// Each method is implemented by public adding a function with the
+    /// Each method is implemented by adding a public function with the
     /// following signature:
     ///
     /// ```
@@ -40,6 +40,8 @@ pub fn run(
     /// ) ?[]const types.TextEdit {}
     /// ```
     ///
+    /// The function may optionally return an error.
+    ///
     /// The `handler` parameter is optional and may be one of the following:
     ///
     /// - `Handler`
@@ -54,7 +56,7 @@ pub fn run(
     const Handler = @TypeOf(handler_ptr.*); // The handler must be passed as a pointer
     const Message = MessageType(Handler);
 
-    comptime std.debug.assert(@hasDecl(Handler, "initialize") or @hasField(Handler, "initialize")); // The 'initialize' cannot be omitted.
+    comptime std.debug.assert(@hasDecl(Handler, "initialize") or @hasField(Handler, "initialize")); // The 'initialize' function cannot be omitted.
 
     while (true) {
         const json_message = try transport.readJsonMessage(allocator);

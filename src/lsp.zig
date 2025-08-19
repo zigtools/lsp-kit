@@ -1184,7 +1184,7 @@ pub const Transport = struct {
 
         fn writeJsonMessage(transport: *Transport, json_message: []const u8) WriteError!void {
             const stdio: *Stdio = @fieldParentPtr("transport", transport);
-            var file_writer: std.fs.File.Writer = .initMode(stdio.write_to, &.{}, .streaming);
+            var file_writer: std.fs.File.Writer = .initStreaming(stdio.write_to, &.{});
             return lsp.writeJsonMessage(&file_writer.interface, json_message) catch |err| switch (err) {
                 error.WriteFailed => return file_writer.err.?,
             };

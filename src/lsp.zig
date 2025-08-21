@@ -1366,7 +1366,7 @@ test writeJsonMessage {
     defer aw.deinit();
 
     try writeJsonMessage(&aw.writer, "{}");
-    try std.testing.expectEqualStrings("Content-Length: 2\r\n\r\n{}", aw.getWritten());
+    try std.testing.expectEqualStrings("Content-Length: 2\r\n\r\n{}", aw.written());
 }
 
 pub fn writeRequest(
@@ -1410,7 +1410,7 @@ test writeRequest {
         \\  "method": "my/method",
         \\  "params": null
         \\}
-    , aw.getWritten());
+    , aw.written());
 }
 
 pub fn writeNotification(
@@ -1450,7 +1450,7 @@ test writeNotification {
         \\  "method": "my/method",
         \\  "params": null
         \\}
-    , aw.getWritten());
+    , aw.written());
 }
 
 pub fn writeResponse(
@@ -1490,7 +1490,7 @@ test writeResponse {
         \\  "id": 0,
         \\  "result": null
         \\}
-    , aw.getWritten());
+    , aw.written());
 }
 
 pub fn writeErrorResponse(
@@ -1532,7 +1532,7 @@ test writeErrorResponse {
         \\    "data": null
         \\  }
         \\}
-    , aw.getWritten());
+    , aw.written());
 }
 
 pub const minimum_logging_buffer_size: usize = 128;

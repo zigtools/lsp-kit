@@ -109,6 +109,7 @@ pub const Handler = struct {
                 },
             },
             .hoverProvider = .{ .bool = true },
+            .completionProvider = .{ .triggerCharacters = &[_][]const u8{"."} },
         };
 
         // Tries to validate that our server capabilities are actually implemented.
@@ -254,6 +255,36 @@ pub const Handler = struct {
                 },
             },
         };
+    }
+
+    // Return autocomplete options when a user types one of the
+    // `triggerCharacters` listed in `server_capabilities`.
+    pub fn @"textDocument/completion"(
+        _: *Handler,
+        arena: std.mem.Allocator,
+        params: lsp.types.CompletionParams,
+    ) error{OutOfMemory}!lsp.ResultType("textDocument/completion") {
+        std.log.debug("Received 'textDocument/completion' notification", .{});
+
+        if (params.context) |context| {
+            std.log.info("completion triggered by {any} {s}", .{
+                context.triggerCharacter,
+                @tagName(context.triggerKind),
+            });
+        }
+
+        var completions = try arena.alloc(lsp.types.CompletionItem, 2);
+        completions[0] = .{
+            .label = "get",
+            .detail = "get the value",
+            .insertText = "get",
+        };
+        completions[1] = .{
+            .label = "set",
+            .detail = "set the value",
+            .insertText = "set",
+        };
+        return .{ .array_of_CompletionItem = completions };
     }
 
     /// We received a response message from the client/editor.

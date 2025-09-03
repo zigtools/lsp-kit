@@ -1006,7 +1006,7 @@ pub const BaseProtocolHeader = struct {
         EndOfStream,
         /// The message is longer than `std.math.maxInt(usize)`.
         OversizedMessage,
-        /// The header field is longer than buffer size of the `std.io.Reader` which is at least `minimum_reader_buffer_size`.
+        /// The header field is longer than buffer size of the `std.Io.Reader` which is at least `minimum_reader_buffer_size`.
         OversizedHeaderField,
         /// The header is missing the mandatory `Content-Length` field.
         MissingContentLength,
@@ -1020,7 +1020,7 @@ pub const BaseProtocolHeader = struct {
 
     /// The maximum parsable header field length is controlled by `reader.buffer.len`.
     /// Asserts that `reader.buffer.len >= minimum_reader_buffer_size`.
-    pub fn parse(reader: *std.io.Reader) (std.io.Reader.Error || ParseError)!BaseProtocolHeader {
+    pub fn parse(reader: *std.Io.Reader) (std.Io.Reader.Error || ParseError)!BaseProtocolHeader {
         std.debug.assert(@import("builtin").is_test or reader.buffer.len >= minimum_reader_buffer_size);
         var content_length: ?usize = null;
 
@@ -1080,13 +1080,13 @@ pub const BaseProtocolHeader = struct {
 
     test "parse with oversized header field" {
         const stream = struct {
-            fn stream(_: *std.io.Reader, _: *std.io.Writer, _: std.io.Limit) std.io.Reader.StreamError!usize {
+            fn stream(_: *std.Io.Reader, _: *std.Io.Writer, _: std.Io.Limit) std.Io.Reader.StreamError!usize {
                 return error.EndOfStream;
             }
         }.stream;
 
         var buffer: [128]u8 = @splat(0);
-        var reader: std.io.Reader = .{
+        var reader: std.Io.Reader = .{
             .vtable = &.{
                 .stream = &stream,
                 .discard = undefined,
@@ -1098,7 +1098,7 @@ pub const BaseProtocolHeader = struct {
         try std.testing.expectError(error.OversizedHeaderField, parse(&reader));
     }
 
-    pub fn format(header: BaseProtocolHeader, writer: *std.io.Writer) std.io.Writer.Error!void {
+    pub fn format(header: BaseProtocolHeader, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("Content-Length: {d}\r\n\r\n", .{header.content_length});
     }
 
@@ -1112,14 +1112,14 @@ pub const BaseProtocolHeader = struct {
     }
 
     fn expectParse(input: []const u8, expected_header: BaseProtocolHeader) !void {
-        var reader: std.io.Reader = .fixed(input);
+        var reader: std.Io.Reader = .fixed(input);
         const actual_header = try parse(&reader);
         try std.testing.expectEqual(expected_header.content_length, actual_header.content_length);
     }
 
     fn expectParseError(input: []const u8, expected_error: ParseError) !void {
         var buffer: [128]u8 = undefined;
-        var reader: std.io.Reader = .fixed(&buffer);
+        var reader: std.Io.Reader = .fixed(&buffer);
         reader.end = input.len;
         @memcpy(buffer[0..input.len], input);
 
@@ -1127,7 +1127,7 @@ pub const BaseProtocolHeader = struct {
     }
 };
 
-pub const TestingTransport = if (!@import("builtin").is_test) @compileError("Use 'std.io.Reader.fixed' or 'std.io.Writer.Allocating' instead.");
+pub const TestingTransport = if (!@import("builtin").is_test) @compileError("Use 'std.Io.Reader.fixed' or 'std.Io.Writer.Allocating' instead.");
 pub const TransportOverStdio = if (!@import("builtin").is_test) @compileError("Use 'Transport.Stdio' instead.");
 pub const AnyTransport = if (!@import("builtin").is_test) @compileError("Use 'Transport' instead.");
 
@@ -1146,7 +1146,7 @@ pub const Transport = struct {
 
     pub const Stdio = struct {
         transport: Transport,
-        reader: std.io.Reader,
+        reader: std.Io.Reader,
         read_from: std.fs.File,
         write_to: std.fs.File,
 
@@ -1336,15 +1336,15 @@ pub fn ThreadSafeTransport(config: ThreadSafeTransportConfig) type {
 }
 
 pub fn readJsonMessage(
-    reader: *std.io.Reader,
+    reader: *std.Io.Reader,
     allocator: std.mem.Allocator,
-) (std.io.Reader.Error || std.mem.Allocator.Error || BaseProtocolHeader.ParseError)![]u8 {
+) (std.Io.Reader.Error || std.mem.Allocator.Error || BaseProtocolHeader.ParseError)![]u8 {
     const header: BaseProtocolHeader = try .parse(reader);
     return try reader.readAlloc(allocator, header.content_length);
 }
 
 test readJsonMessage {
-    var reader: std.io.Reader = .fixed("Content-Length: 2\r\n\r\n{}");
+    var reader: std.Io.Reader = .fixed("Content-Length: 2\r\n\r\n{}");
 
     const json_message = try readJsonMessage(&reader, std.testing.allocator);
     defer std.testing.allocator.free(json_message);
@@ -1352,7 +1352,7 @@ test readJsonMessage {
     try std.testing.expectEqualStrings("{}", json_message);
 }
 
-pub fn writeJsonMessage(writer: *std.io.Writer, json_message: []const u8) std.io.Writer.Error!void {
+pub fn writeJsonMessage(writer: *std.Io.Writer, json_message: []const u8) std.Io.Writer.Error!void {
     const header: BaseProtocolHeader = .{ .content_length = json_message.len };
     var buffer: [64]u8 = undefined;
     const prefix = std.fmt.bufPrint(&buffer, "{f}", .{header}) catch unreachable;
@@ -1362,7 +1362,7 @@ pub fn writeJsonMessage(writer: *std.io.Writer, json_message: []const u8) std.io
 }
 
 test writeJsonMessage {
-    var aw: std.io.Writer.Allocating = .init(std.testing.allocator);
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer aw.deinit();
 
     try writeJsonMessage(&aw.writer, "{}");
@@ -1370,14 +1370,14 @@ test writeJsonMessage {
 }
 
 pub fn writeRequest(
-    writer: *std.io.Writer,
+    writer: *std.Io.Writer,
     allocator: std.mem.Allocator,
     id: JsonRPCMessage.ID,
     method: []const u8,
     comptime Params: type,
     params: Params,
     options: std.json.Stringify.Options,
-) (std.io.Writer.Error || std.mem.Allocator.Error)!void {
+) (std.Io.Writer.Error || std.mem.Allocator.Error)!void {
     const request: TypedJsonRPCRequest(Params) = .{
         .id = id,
         .method = method,
@@ -1390,7 +1390,7 @@ pub fn writeRequest(
 
 test writeRequest {
     var buffer: std.ArrayListUnmanaged(u8) = .empty;
-    var aw: std.io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
+    var aw: std.Io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
     defer aw.deinit();
 
     try writeRequest(
@@ -1414,13 +1414,13 @@ test writeRequest {
 }
 
 pub fn writeNotification(
-    writer: *std.io.Writer,
+    writer: *std.Io.Writer,
     allocator: std.mem.Allocator,
     method: []const u8,
     comptime Params: type,
     params: Params,
     options: std.json.Stringify.Options,
-) (std.io.Writer.Error || std.mem.Allocator.Error)!void {
+) (std.Io.Writer.Error || std.mem.Allocator.Error)!void {
     const request: TypedJsonRPCNotification(Params) = .{
         .method = method,
         .params = params,
@@ -1432,7 +1432,7 @@ pub fn writeNotification(
 
 test writeNotification {
     var buffer: std.ArrayListUnmanaged(u8) = .empty;
-    var aw: std.io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
+    var aw: std.Io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
     defer aw.deinit();
 
     try writeNotification(
@@ -1454,13 +1454,13 @@ test writeNotification {
 }
 
 pub fn writeResponse(
-    writer: *std.io.Writer,
+    writer: *std.Io.Writer,
     allocator: std.mem.Allocator,
     id: ?JsonRPCMessage.ID,
     comptime Result: type,
     result: Result,
     options: std.json.Stringify.Options,
-) (std.io.Writer.Error || std.mem.Allocator.Error)!void {
+) (std.Io.Writer.Error || std.mem.Allocator.Error)!void {
     const request: TypedJsonRPCResponse(Result) = .{
         .id = id,
         .result_or_error = .{ .result = result },
@@ -1472,7 +1472,7 @@ pub fn writeResponse(
 
 test writeResponse {
     var buffer: std.ArrayListUnmanaged(u8) = .empty;
-    var aw: std.io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
+    var aw: std.Io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
     defer aw.deinit();
 
     try writeResponse(
@@ -1494,12 +1494,12 @@ test writeResponse {
 }
 
 pub fn writeErrorResponse(
-    writer: *std.io.Writer,
+    writer: *std.Io.Writer,
     allocator: std.mem.Allocator,
     id: ?JsonRPCMessage.ID,
     err: JsonRPCMessage.Response.Error,
     options: std.json.Stringify.Options,
-) (std.io.Writer.Error || std.mem.Allocator.Error)!void {
+) (std.Io.Writer.Error || std.mem.Allocator.Error)!void {
     const request: TypedJsonRPCResponse(void) = .{
         .id = id,
         .result_or_error = .{ .@"error" = err },
@@ -1511,7 +1511,7 @@ pub fn writeErrorResponse(
 
 test writeErrorResponse {
     var buffer: std.ArrayListUnmanaged(u8) = .empty;
-    var aw: std.io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
+    var aw: std.Io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
     defer aw.deinit();
 
     try writeErrorResponse(
@@ -1553,7 +1553,7 @@ pub fn bufPrintLogMessage(
         buffer,
         message_type,
         struct {
-            fn format(writer: *std.io.Writer, opaque_params: *const anyopaque) std.io.Writer.Error!void {
+            fn format(writer: *std.Io.Writer, opaque_params: *const anyopaque) std.Io.Writer.Error!void {
                 return writer.print(fmt, @as(*const @TypeOf(args), @ptrCast(@alignCast(opaque_params))).*);
             }
         }.format,
@@ -1564,12 +1564,12 @@ pub fn bufPrintLogMessage(
 fn bufPrintLogMessageTypeErased(
     buffer: []u8,
     message_type: types.MessageType,
-    format_fn: *const fn (*std.io.Writer, opaque_params: *const anyopaque) std.io.Writer.Error!void,
+    format_fn: *const fn (*std.Io.Writer, opaque_params: *const anyopaque) std.Io.Writer.Error!void,
     opaque_params: *const anyopaque,
 ) []u8 {
     std.debug.assert(buffer.len >= minimum_logging_buffer_size);
 
-    var writer: std.io.Writer = .fixed(buffer);
+    var writer: std.Io.Writer = .fixed(buffer);
     writer.print(
         \\{{"jsonrpc":"2.0","method":"window/logMessage","params":{{"type":{f},"message":"
     , .{std.json.fmt(message_type, .{})}) catch unreachable;
@@ -1597,26 +1597,26 @@ fn bufPrintLogMessageTypeErased(
 /// escaped JSON string will be written into `out`.
 ///
 /// The output will only be written into `out.buffer` and will never be
-/// drained. So it is best used with `std.io.Writer.fixed` to write into a
+/// drained. So it is best used with `std.Io.Writer.fixed` to write into a
 /// fixed sized buffer.
 const JsonTransform = struct {
-    out: *std.io.Writer,
-    interface: std.io.Writer,
+    out: *std.Io.Writer,
+    interface: std.Io.Writer,
 
-    fn init(out: *std.io.Writer) JsonTransform {
+    fn init(out: *std.Io.Writer) JsonTransform {
         return .{
             .out = out,
             .interface = .{
                 .vtable = &.{
                     .drain = drain,
-                    .flush = std.io.Writer.noopFlush,
+                    .flush = std.Io.Writer.noopFlush,
                 },
                 .buffer = &.{},
             },
         };
     }
 
-    fn drain(w: *std.io.Writer, data: []const []const u8, splat: usize) std.io.Writer.Error!usize {
+    fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
         if (data.len == 0) return 0;
 
         const json_transform: *JsonTransform = @fieldParentPtr("interface", w);

@@ -18,7 +18,7 @@ pub fn main() !void {
     const parsed_meta_model = try std.json.parseFromSlice(MetaModel, gpa, @embedFile("meta-model"), .{});
     defer parsed_meta_model.deinit();
 
-    var aw: std.io.Writer.Allocating = .init(gpa);
+    var aw: std.Io.Writer.Allocating = .init(gpa);
     defer aw.deinit();
 
     @setEvalBranchQuota(100_000);
@@ -58,7 +58,7 @@ const FormatDocs = struct {
     };
 };
 
-fn renderDocs(ctx: FormatDocs, writer: *std.io.Writer) std.io.Writer.Error!void {
+fn renderDocs(ctx: FormatDocs, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     const prefix = switch (ctx.comment_kind) {
         .normal => "// ",
         .doc => "/// ",
@@ -68,7 +68,7 @@ fn renderDocs(ctx: FormatDocs, writer: *std.io.Writer) std.io.Writer.Error!void 
     while (iterator.next()) |line| try writer.print("{s}{s}\n", .{ prefix, line });
 }
 
-fn fmtDocs(text: []const u8, comment_kind: FormatDocs.CommentKind) std.fmt.Formatter(FormatDocs, renderDocs) {
+fn fmtDocs(text: []const u8, comment_kind: FormatDocs.CommentKind) std.fmt.Alt(FormatDocs, renderDocs) {
     return .{ .data = .{ .text = text, .comment_kind = comment_kind } };
 }
 
@@ -80,7 +80,7 @@ fn messageDirectionName(message_direction: MetaModel.MessageDirection) []const u
     };
 }
 
-fn guessTypeName(meta_model: MetaModel, writer: *std.io.Writer, typ: MetaModel.Type, i: usize) std.io.Writer.Error!void {
+fn guessTypeName(meta_model: MetaModel, writer: *std.Io.Writer, typ: MetaModel.Type, i: usize) std.Io.Writer.Error!void {
     switch (typ) {
         .base => |base| switch (base.name) {
             .URI => try writer.writeAll("uri"),
@@ -128,7 +128,7 @@ const FormatType = struct {
     ty: MetaModel.Type,
 };
 
-fn renderType(ctx: FormatType, writer: *std.io.Writer) std.io.Writer.Error!void {
+fn renderType(ctx: FormatType, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     switch (ctx.ty) {
         .base => |base| switch (base.name) {
             .URI => try writer.writeAll("URI"),
@@ -221,7 +221,7 @@ fn renderType(ctx: FormatType, writer: *std.io.Writer) std.io.Writer.Error!void 
     }
 }
 
-fn fmtType(ty: MetaModel.Type, meta_model: *const MetaModel) std.fmt.Formatter(FormatType, renderType) {
+fn fmtType(ty: MetaModel.Type, meta_model: *const MetaModel) std.fmt.Alt(FormatType, renderType) {
     return .{ .data = .{ .meta_model = meta_model, .ty = ty } };
 }
 
@@ -230,7 +230,7 @@ const FormatProperty = struct {
     property: MetaModel.Property,
 };
 
-fn renderProperty(ctx: FormatProperty, writer: *std.io.Writer) std.io.Writer.Error!void {
+fn renderProperty(ctx: FormatProperty, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     const isUndefinedable = ctx.property.optional orelse false;
     const isNull = isTypeNull(ctx.property.type);
     // WORKAROUND: recursive SelectionRange
@@ -246,7 +246,7 @@ fn renderProperty(ctx: FormatProperty, writer: *std.io.Writer) std.io.Writer.Err
     });
 }
 
-fn fmtProperty(property: MetaModel.Property, meta_model: *const MetaModel) std.fmt.Formatter(FormatProperty, renderProperty) {
+fn fmtProperty(property: MetaModel.Property, meta_model: *const MetaModel) std.fmt.Alt(FormatProperty, renderProperty) {
     return .{ .data = .{ .meta_model = meta_model, .property = property } };
 }
 
@@ -256,7 +256,7 @@ const FormatProperties = struct {
     maybe_extender: ?MetaModel.Structure,
 };
 
-fn renderProperties(ctx: FormatProperties, writer: *std.io.Writer) std.io.Writer.Error!void {
+fn renderProperties(ctx: FormatProperties, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     const properties: []MetaModel.Property = ctx.structure.properties;
     const extends: []MetaModel.Type = ctx.structure.extends orelse &.{};
     const mixins: []MetaModel.Type = ctx.structure.mixins orelse &.{};
@@ -294,7 +294,7 @@ fn fmtProperties(
     structure: MetaModel.Structure,
     maybe_extender: ?MetaModel.Structure,
     meta_model: *const MetaModel,
-) std.fmt.Formatter(FormatProperties, renderProperties) {
+) std.fmt.Alt(FormatProperties, renderProperties) {
     return .{ .data = .{ .meta_model = meta_model, .structure = structure, .maybe_extender = maybe_extender } };
 }
 
@@ -304,7 +304,7 @@ const FormatReference = struct {
     maybe_extender: ?MetaModel.Structure,
 };
 
-fn renderReference(ctx: FormatReference, writer: *std.io.Writer) std.io.Writer.Error!void {
+fn renderReference(ctx: FormatReference, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     for (ctx.meta_model.structures) |s| {
         if (std.mem.eql(u8, s.name, ctx.reference.name)) {
             try writer.print("{f}", .{fmtProperties(s, ctx.maybe_extender, ctx.meta_model)});
@@ -317,11 +317,11 @@ fn fmtReference(
     reference: MetaModel.ReferenceType,
     maybe_extender: ?MetaModel.Structure,
     meta_model: *const MetaModel,
-) std.fmt.Formatter(FormatReference, renderReference) {
+) std.fmt.Alt(FormatReference, renderReference) {
     return .{ .data = .{ .meta_model = meta_model, .reference = reference, .maybe_extender = maybe_extender } };
 }
 
-fn writeRequest(writer: *std.io.Writer, meta_model: MetaModel, request: MetaModel.Request) std.io.Writer.Error!void {
+fn writeRequest(writer: *std.Io.Writer, meta_model: MetaModel, request: MetaModel.Request) std.Io.Writer.Error!void {
     if (request.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .normal)});
 
     try writer.print(
@@ -350,7 +350,7 @@ fn writeRequest(writer: *std.io.Writer, meta_model: MetaModel, request: MetaMode
     });
 }
 
-fn writeNotification(writer: *std.io.Writer, meta_model: MetaModel, notification: MetaModel.Notification) std.io.Writer.Error!void {
+fn writeNotification(writer: *std.Io.Writer, meta_model: MetaModel, notification: MetaModel.Notification) std.Io.Writer.Error!void {
     if (notification.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .normal)});
 
     try writer.print(
@@ -373,7 +373,7 @@ fn writeNotification(writer: *std.io.Writer, meta_model: MetaModel, notification
     });
 }
 
-fn writeStructure(writer: *std.io.Writer, meta_model: MetaModel, structure: MetaModel.Structure) std.io.Writer.Error!void {
+fn writeStructure(writer: *std.Io.Writer, meta_model: MetaModel, structure: MetaModel.Structure) std.Io.Writer.Error!void {
     if (std.mem.eql(u8, structure.name, "LSPObject")) return;
 
     if (structure.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .doc)});
@@ -383,7 +383,7 @@ fn writeStructure(writer: *std.io.Writer, meta_model: MetaModel, structure: Meta
     });
 }
 
-fn writeEnumeration(writer: *std.io.Writer, meta_model: MetaModel, enumeration: MetaModel.Enumeration) std.io.Writer.Error!void {
+fn writeEnumeration(writer: *std.Io.Writer, meta_model: MetaModel, enumeration: MetaModel.Enumeration) std.Io.Writer.Error!void {
     _ = meta_model;
 
     if (enumeration.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .doc)});
@@ -442,14 +442,14 @@ fn writeEnumeration(writer: *std.io.Writer, meta_model: MetaModel, enumeration: 
     try writer.writeAll("};\n\n");
 }
 
-fn writeTypeAlias(writer: *std.io.Writer, meta_model: MetaModel, type_alias: MetaModel.TypeAlias) std.io.Writer.Error!void {
+fn writeTypeAlias(writer: *std.Io.Writer, meta_model: MetaModel, type_alias: MetaModel.TypeAlias) std.Io.Writer.Error!void {
     if (std.mem.startsWith(u8, type_alias.name, "LSP")) return;
 
     if (type_alias.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .doc)});
     try writer.print("pub const {f} = {f};\n\n", .{ std.zig.fmtId(type_alias.name), fmtType(type_alias.type, &meta_model) });
 }
 
-fn writeMetaModel(writer: *std.io.Writer, meta_model: MetaModel) std.io.Writer.Error!void {
+fn writeMetaModel(writer: *std.Io.Writer, meta_model: MetaModel) std.Io.Writer.Error!void {
     try writer.writeAll(@embedFile("lsp_types_base.zig") ++ "\n");
 
     try writer.writeAll("// Type Aliases\n\n");

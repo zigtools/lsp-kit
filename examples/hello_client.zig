@@ -62,7 +62,10 @@ pub fn main() !void {
 
     if (args.len < 3) fatalWithUsage("expected at least 2 arguments but got {d}", .{args.len - 1});
 
-    const input_file = std.fs.cwd().readFileAlloc(args[1], gpa, .limited(std.math.maxInt(u32))) catch |err|
+    const input_file = (if (@hasDecl(std, "io"))
+        std.fs.cwd().readFileAlloc(gpa, args[1], std.math.maxInt(u32))
+    else
+        std.fs.cwd().readFileAlloc(args[1], gpa, .limited(std.math.maxInt(u32)))) catch |err|
         fatal("failed to read file '{s}': {}", .{ args[1], err });
     defer gpa.free(input_file);
 

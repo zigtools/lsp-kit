@@ -62,6 +62,9 @@ pub fn build(b: *std.Build) void {
         },
     });
 
+    const codegen_step = b.step("codegen", "Install LSP types generated from the meta model");
+    codegen_step.dependOn(&b.addInstallFile(lsp_types_output_file, "lsp_types.zig").step);
+
     // -------------------------------- Autodoc --------------------------------
 
     const autodoc_exe = b.addObject(.{

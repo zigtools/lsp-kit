@@ -261,6 +261,8 @@ fn renderProperties(ctx: FormatProperties, writer: *std.Io.Writer) std.Io.Writer
     const extends: []MetaModel.Type = ctx.structure.extends orelse &.{};
     const mixins: []MetaModel.Type = ctx.structure.mixins orelse &.{};
 
+    var has_properties = false;
+
     skip: for (properties) |property| {
         if (ctx.maybe_extender) |ext| {
             for (ext.properties) |ext_property| {
@@ -270,12 +272,15 @@ fn renderProperties(ctx: FormatProperties, writer: *std.Io.Writer) std.Io.Writer
                 }
             }
         }
-        try writer.print("\n{f}", .{fmtProperty(property, ctx.meta_model)});
+        try writer.print("{f}\n", .{fmtProperty(property, ctx.meta_model)});
+        has_properties = true;
     }
+
+    if (has_properties and (extends.len != 0 or mixins.len != 0)) try writer.writeByte('\n');
 
     for (extends) |ext| {
         if (ext != .reference) @panic("Expected reference for extends!");
-        try writer.print("\n\n// Extends `{s}`{f}", .{
+        try writer.print("// Extends `{s}`\n{f}\n", .{
             ext.reference.name,
             fmtReference(ext.reference, ctx.structure, ctx.meta_model),
         });
@@ -283,7 +288,7 @@ fn renderProperties(ctx: FormatProperties, writer: *std.Io.Writer) std.Io.Writer
 
     for (mixins) |ext| {
         if (ext != .reference) @panic("Expected reference for mixin!");
-        try writer.print("\n\n// Uses mixin `{s}`{f}", .{
+        try writer.print("// Uses mixin `{s}`\n{f}\n", .{
             ext.reference.name,
             fmtReference(ext.reference, ctx.structure, ctx.meta_model),
         });
@@ -377,7 +382,7 @@ fn writeStructure(writer: *std.Io.Writer, meta_model: MetaModel, structure: Meta
     if (std.mem.eql(u8, structure.name, "LSPObject")) return;
 
     if (structure.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .doc)});
-    try writer.print("pub const {f} = struct {{{f}\n}};\n\n", .{
+    try writer.print("pub const {f} = struct {{\n{f}}};\n\n", .{
         std.zig.fmtId(structure.name),
         fmtProperties(structure, null, &meta_model),
     });

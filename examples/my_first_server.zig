@@ -257,8 +257,6 @@ pub const Handler = struct {
         };
     }
 
-    // Return autocomplete options when a user types one of the
-    // `triggerCharacters` listed in `server_capabilities`.
     pub fn @"textDocument/completion"(
         _: *Handler,
         arena: std.mem.Allocator,

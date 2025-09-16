@@ -3003,7 +3003,8 @@ test "Message.Response - 'result' and 'error' field" {
 }
 
 pub fn ResultType(comptime method: []const u8) type {
-    if (types.getRequestMetadata(method)) |meta| return meta.Result;
+    @setEvalBranchQuota(10_000);
+    if (types.requests.get(method)) |meta| return meta.Result;
     if (isNotificationMethod(method)) return void;
     @compileError("unknown method '" ++ method ++ "'");
 }
@@ -3016,8 +3017,9 @@ test ResultType {
 }
 
 pub fn ParamsType(comptime method: []const u8) type {
-    if (types.getRequestMetadata(method)) |meta| return meta.Params orelse void;
-    if (types.getNotificationMetadata(method)) |meta| return meta.Params orelse void;
+    @setEvalBranchQuota(10_000);
+    if (types.requests.get(method)) |meta| return meta.Params orelse void;
+    if (types.notifications.get(method)) |meta| return meta.Params orelse void;
     @compileError("unknown method '" ++ method ++ "'");
 }
 
@@ -3029,17 +3031,17 @@ test ParamsType {
 }
 
 const request_method_set: std.StaticStringMap(void) = blk: {
-    var kvs_list: [types.request_metadata.len]struct { []const u8 } = undefined;
-    for (types.request_metadata, &kvs_list) |meta, *kv| {
-        kv.* = .{meta.method};
+    var kvs_list: [types.requests.keys().len]struct { []const u8 } = undefined;
+    for (types.requests.keys(), &kvs_list) |method, *kv| {
+        kv.* = .{method};
     }
     break :blk .initComptime(kvs_list);
 };
 
 const notification_method_set: std.StaticStringMap(void) = blk: {
-    var kvs_list: [types.notification_metadata.len]struct { []const u8 } = undefined;
-    for (types.notification_metadata, &kvs_list) |meta, *kv| {
-        kv.* = .{meta.method};
+    var kvs_list: [types.notifications.keys().len]struct { []const u8 } = undefined;
+    for (types.notifications.keys(), &kvs_list) |method, *kv| {
+        kv.* = .{method};
     }
     break :blk .initComptime(kvs_list);
 };
@@ -3077,6 +3079,7 @@ test isNotificationMethod {
 }
 
 comptime {
-    @setEvalBranchQuota(10_000);
-    std.testing.refAllDeclsRecursive(@This());
+    _ = &types;
+    _ = &parser;
+    _ = &offsets;
 }

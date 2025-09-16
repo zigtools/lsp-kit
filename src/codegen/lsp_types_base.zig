@@ -30,32 +30,13 @@ pub const MessageDirection = enum {
 };
 
 test MessageDirection {
-    try std.testing.expectEqual(MessageDirection.server_to_client, getRequestMetadata("workspace/configuration").?.direction);
-    try std.testing.expectEqual(MessageDirection.client_to_server, getNotificationMetadata("textDocument/didOpen").?.direction);
-    try std.testing.expectEqual(MessageDirection.both, getNotificationMetadata("$/cancelRequest").?.direction);
+    try std.testing.expectEqual(MessageDirection.server_to_client, requests.get("workspace/configuration").?.direction);
+    try std.testing.expectEqual(MessageDirection.client_to_server, notifications.get("textDocument/didOpen").?.direction);
+    try std.testing.expectEqual(MessageDirection.both, notifications.get("$/cancelRequest").?.direction);
 }
 
-/// Returns comptime-known metadata about them a Request.
-pub fn getRequestMetadata(comptime method: []const u8) ?RequestMetadata {
-    @setEvalBranchQuota(10_000);
-    for (request_metadata) |meta| {
-        if (std.mem.eql(u8, method, meta.method)) {
-            return meta;
-        }
-    }
-    return null;
-}
-
-/// Returns comptime-known metadata about them a Notification.
-pub fn getNotificationMetadata(comptime method: []const u8) ?NotificationMetadata {
-    @setEvalBranchQuota(10_000);
-    for (notification_metadata) |meta| {
-        if (std.mem.eql(u8, method, meta.method)) {
-            return meta;
-        }
-    }
-    return null;
-}
+pub const getRequestMetadata = @compileError("Removed; Use `requests.get(method)` instead.");
+pub const getNotificationMetadata = @compileError("Removed; Use `notifications.get(method)` instead.");
 
 pub const RegistrationMetadata = struct {
     /// A dynamic registration method if it different from the request's method.
@@ -94,11 +75,14 @@ pub const RequestMetadata = struct {
     registration: RegistrationMetadata,
 };
 
-/// A list of Request with comptime-known metadata about them.
-pub const request_metadata: []const RequestMetadata = &types.request_metadata_generated;
+pub const request_metadata = @compileError("Removed; Use `requests.values()` instead.");
+pub const notification_metadata = @compileError("Removed; Use `notifications.values()` instead.");
 
-/// A list of Notification with comptime-known metadata about them.
-pub const notification_metadata: []const NotificationMetadata = &types.notification_metadata_generated;
+/// A set of Request with comptime-known metadata about them.
+pub const requests: std.StaticStringMap(RequestMetadata) = types.requests_generated;
+
+/// A set of Notification with comptime-known metadata about them.
+pub const notifications: std.StaticStringMap(NotificationMetadata) = types.notifications_generated;
 
 fn testType(comptime T: type) void {
     if (T == void) return;
@@ -123,12 +107,12 @@ fn testType(comptime T: type) void {
 }
 
 test {
-    for (types.notification_metadata) |metadata| {
+    for (types.notifications.values()) |metadata| {
         if (metadata.Params) |Params| {
             testType(Params);
         }
     }
-    for (types.request_metadata) |metadata| {
+    for (types.requests.values()) |metadata| {
         if (metadata.Params) |Params| {
             testType(Params);
         }

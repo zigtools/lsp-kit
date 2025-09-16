@@ -341,18 +341,22 @@ fn writeRequest(writer: *std.Io.Writer, meta_model: MetaModel, request: MetaMode
 
     try writer.print(
         \\.{{
-        \\  .method = "{s}",
-        \\  .documentation = {?f},
-        \\  .direction = .{s},
-        \\  .Params = {?f},
-        \\  .Result = {f},
-        \\  .PartialResult = {?f},
-        \\  .ErrorData = {?f},
-        \\  .registration = .{{ .method = {?f}, .Options = {?f} }},
+        \\    "{f}",
+        \\    RequestMetadata{{
+        \\        .method = {f},
+        \\        .documentation = {?f},
+        \\        .direction = .{s},
+        \\        .Params = {?f},
+        \\        .Result = {f},
+        \\        .PartialResult = {?f},
+        \\        .ErrorData = {?f},
+        \\        .registration = .{{ .method = {?f}, .Options = {?f} }},
+        \\    }},
         \\}},
         \\
     , .{
-        request.method,
+        std.zig.fmtString(request.method),
+        std.json.fmt(request.method, .{}),
         if (request.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
         messageDirectionName(request.messageDirection),
         // NOTE: Multiparams not used here, so we dont have to implement them :)
@@ -370,15 +374,19 @@ fn writeNotification(writer: *std.Io.Writer, meta_model: MetaModel, notification
 
     try writer.print(
         \\.{{
-        \\  .method = "{s}",
-        \\  .documentation = {?f},
-        \\  .direction = .{s},
-        \\  .Params = {?f},
-        \\  .registration = .{{ .method = {?f}, .Options = {?f} }},
+        \\    "{f}",
+        \\    NotificationMetadata{{
+        \\        .method = {f},
+        \\        .documentation = {?f},
+        \\        .direction = .{s},
+        \\        .Params = {?f},
+        \\        .registration = .{{ .method = {?f}, .Options = {?f} }},
+        \\    }},
         \\}},
         \\
     , .{
-        notification.method,
+        std.zig.fmtString(notification.method),
+        std.json.fmt(notification.method, .{}),
         if (notification.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
         messageDirectionName(notification.messageDirection),
         // NOTE: Multiparams not used here, so we dont have to implement them :)
@@ -482,15 +490,15 @@ fn writeMetaModel(writer: *std.Io.Writer, meta_model: MetaModel) std.Io.Writer.E
         try writeStructure(writer, meta_model, structure);
     }
 
-    try writer.writeAll("const notification_metadata_generated = [_]NotificationMetadata{\n");
+    try writer.writeAll("const notifications_generated: std.StaticStringMap(NotificationMetadata) = .initComptime(&.{\n");
     for (meta_model.notifications) |notification| {
         try writeNotification(writer, meta_model, notification);
     }
-    try writer.writeAll("\n};");
+    try writer.writeAll("\n});");
 
-    try writer.writeAll("const request_metadata_generated = [_]RequestMetadata{\n");
+    try writer.writeAll("const requests_generated: std.StaticStringMap(RequestMetadata) = .initComptime(&.{\n");
     for (meta_model.requests) |request| {
         try writeRequest(writer, meta_model, request);
     }
-    try writer.writeAll("};\n");
+    try writer.writeAll("\n});");
 }

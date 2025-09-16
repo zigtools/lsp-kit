@@ -273,17 +273,16 @@ pub const Handler = struct {
             });
         }
 
-        var completions = try arena.alloc(lsp.types.CompletionItem, 2);
-        completions[0] = .{
-            .label = "get",
-            .detail = "get the value",
-            .insertText = "get",
-        };
-        completions[1] = .{
-            .label = "set",
-            .detail = "set the value",
-            .insertText = "set",
-        };
+        const completions = try arena.dupe(lsp.types.CompletionItem, &.{
+            .{
+                .label = "get",
+                .detail = "get the value",
+            },
+            .{
+                .label = "set",
+                .detail = "set the value",
+            },
+        });
         return .{ .array_of_CompletionItem = completions };
     }
 

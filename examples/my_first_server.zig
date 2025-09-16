@@ -267,9 +267,9 @@ pub const Handler = struct {
         std.log.debug("Received 'textDocument/completion' notification", .{});
 
         if (params.context) |context| {
-            std.log.info("completion triggered by {any} {s}", .{
+            std.log.info("completion triggered by {?s} {t}", .{
                 context.triggerCharacter,
-                @tagName(context.triggerKind),
+                context.triggerKind,
             });
         }
 

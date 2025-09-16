@@ -109,7 +109,7 @@ pub const Handler = struct {
                 },
             },
             .hoverProvider = .{ .bool = true },
-            .completionProvider = .{ .triggerCharacters = &[_][]const u8{"."} },
+            .completionProvider = .{ .triggerCharacters = &.{"."} },
         };
 
         // Tries to validate that our server capabilities are actually implemented.

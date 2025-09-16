@@ -109,6 +109,7 @@ pub const Handler = struct {
                 },
             },
             .hoverProvider = .{ .bool = true },
+            .completionProvider = .{ .triggerCharacters = &.{"."} },
         };
 
         // Tries to validate that our server capabilities are actually implemented.
@@ -254,6 +255,33 @@ pub const Handler = struct {
                 },
             },
         };
+    }
+
+    pub fn @"textDocument/completion"(
+        _: *Handler,
+        arena: std.mem.Allocator,
+        params: lsp.types.CompletionParams,
+    ) error{OutOfMemory}!lsp.ResultType("textDocument/completion") {
+        std.log.debug("Received 'textDocument/completion' notification", .{});
+
+        if (params.context) |context| {
+            std.log.info("completion triggered by {?s} {t}", .{
+                context.triggerCharacter,
+                context.triggerKind,
+            });
+        }
+
+        const completions = try arena.dupe(lsp.types.CompletionItem, &.{
+            .{
+                .label = "get",
+                .detail = "get the value",
+            },
+            .{
+                .label = "set",
+                .detail = "set the value",
+            },
+        });
+        return .{ .array_of_CompletionItem = completions };
     }
 
     /// We received a response message from the client/editor.

@@ -80,7 +80,7 @@ fn messageDirectionName(message_direction: MetaModel.MessageDirection) []const u
     };
 }
 
-fn guessTypeName(meta_model: MetaModel, writer: *std.Io.Writer, typ: MetaModel.Type, i: usize) std.Io.Writer.Error!void {
+fn guessFieldName(meta_model: MetaModel, writer: *std.Io.Writer, typ: MetaModel.Type, i: usize) std.Io.Writer.Error!void {
     switch (typ) {
         .base => |base| switch (base.name) {
             .URI => try writer.writeAll("uri"),
@@ -96,7 +96,7 @@ fn guessTypeName(meta_model: MetaModel, writer: *std.Io.Writer, typ: MetaModel.T
         .reference => |ref| try writer.print("{f}", .{std.zig.fmtId(ref.name)}),
         .array => |arr| {
             try writer.writeAll("array_of_");
-            try guessTypeName(meta_model, writer, arr.element.*, 0);
+            try guessFieldName(meta_model, writer, arr.element.*, 0);
         },
         .map => try writer.print("map_{d}", .{i}),
         .@"and" => try writer.print("and_{d}", .{i}),
@@ -110,17 +110,30 @@ fn guessTypeName(meta_model: MetaModel, writer: *std.Io.Writer, typ: MetaModel.T
     }
 }
 
-fn isOrActuallyEnum(ort: MetaModel.OrType) bool {
-    for (ort.items) |t| {
+fn isNull(ty: MetaModel.Type) bool {
+    return ty == .base and ty.base.name == .null;
+}
+
+fn unwrapOptional(ty: MetaModel.Type) ?MetaModel.Type {
+    if (ty != .@"or") return null;
+    const or_ty = ty.@"or";
+    if (or_ty.items.len == 2 and isNull(or_ty.items[1])) return or_ty.items[0];
+    return null;
+}
+
+fn isEnum(ty: MetaModel.Type) bool {
+    if (ty != .@"or") return false;
+    const or_ty = ty.@"or";
+    for (or_ty.items) |t| {
         if (t != .stringLiteral) return false;
     }
     return true;
 }
 
-fn isTypeNull(typ: MetaModel.Type) bool {
-    if (typ != .@"or") return false;
-    const ort = typ.@"or";
-    return (ort.items.len == 2 and ort.items[1] == .base and ort.items[1].base.name == .null) or (ort.items[ort.items.len - 1] == .base and ort.items[ort.items.len - 1].base.name == .null);
+fn isNullable(ty: MetaModel.Type) bool {
+    if (ty != .@"or") return false;
+    const or_ty = ty.@"or";
+    return (or_ty.items.len == 2 and isNull(or_ty.items[1])) or isNull(or_ty.items[or_ty.items.len - 1]);
 }
 
 const FormatType = struct {
@@ -168,25 +181,22 @@ fn renderType(ctx: FormatType, writer: *std.Io.Writer) std.Io.Writer.Error!void 
             try writer.writeAll("}");
         },
         .@"or" => |ort| {
-            // NOTE: Hack to get optionals working
-            // There are no triple optional ors (I believe),
-            // so this should work every time
-            if (ort.items.len == 2 and ort.items[1] == .base and ort.items[1].base.name == .null) {
-                try writer.print("?{f}", .{fmtType(ort.items[0], ctx.meta_model)});
-            } else if (isOrActuallyEnum(ort)) {
+            if (unwrapOptional(ctx.ty)) |child_type| {
+                try writer.print("?{f}", .{fmtType(child_type, ctx.meta_model)});
+            } else if (isEnum(ctx.ty)) {
                 try writer.writeAll("enum {");
                 for (ort.items) |sub_type| {
                     try writer.print("{s},\n", .{sub_type.stringLiteral.value});
                 }
                 try writer.writeByte('}');
             } else {
-                const has_null = ort.items[ort.items.len - 1] == .base and ort.items[ort.items.len - 1].base.name == .null;
+                const has_null = isNull(ort.items[ort.items.len - 1]);
 
                 if (has_null) try writer.writeByte('?');
 
                 try writer.writeAll("union(enum) {\n");
-                for (ort.items[0..if (has_null) ort.items.len - 1 else ort.items.len], 0..) |sub_type, i| {
-                    try guessTypeName(ctx.meta_model.*, writer, sub_type, i);
+                for (ort.items[0 .. ort.items.len - @intFromBool(has_null)], 0..) |sub_type, i| {
+                    try guessFieldName(ctx.meta_model.*, writer, sub_type, i);
                     try writer.print(": {f},\n", .{fmtType(sub_type, ctx.meta_model)});
                 }
                 try writer.writeAll(
@@ -216,8 +226,8 @@ fn renderType(ctx: FormatType, writer: *std.Io.Writer) std.Io.Writer.Error!void 
             try writer.writeByte('}');
         },
         .stringLiteral => |lit| try writer.print("[]const u8 = \"{f}\"", .{std.zig.fmtString(lit.value)}),
-        .integerLiteral => |lit| try writer.print("i32 = {d}", .{lit.value}),
-        .booleanLiteral => |lit| try writer.print("bool = {}", .{lit.value}),
+        .integerLiteral => @panic("unsupported"),
+        .booleanLiteral => @panic("unsupported"),
     }
 }
 
@@ -231,18 +241,18 @@ const FormatProperty = struct {
 };
 
 fn renderProperty(ctx: FormatProperty, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    const isUndefinedable = ctx.property.optional orelse false;
-    const isNull = isTypeNull(ctx.property.type);
+    const is_undefinedable = ctx.property.optional orelse false;
+    const is_nullable = isNullable(ctx.property.type);
     // WORKAROUND: recursive SelectionRange
-    const isSelectionRange = ctx.property.type == .reference and std.mem.eql(u8, ctx.property.type.reference.name, "SelectionRange");
+    const is_selection_range = ctx.property.type == .reference and std.mem.eql(u8, ctx.property.type.reference.name, "SelectionRange");
 
     if (ctx.property.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .doc)});
 
     try writer.print("{f}: {s}{f}{s},", .{
         std.zig.fmtIdPU(ctx.property.name),
-        if (isSelectionRange) "?*" else if (isUndefinedable and !isNull) "?" else "",
+        if (is_selection_range) "?*" else if (is_undefinedable and !is_nullable) "?" else "",
         fmtType(ctx.property.type, ctx.meta_model),
-        if (isNull or isUndefinedable) " = null" else "",
+        if (is_nullable or is_undefinedable) " = null" else "",
     });
 }
 

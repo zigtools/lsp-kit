@@ -125,7 +125,7 @@ pub fn main() !void {
         const documentFormattingProvider = initialize_result.capabilities.documentFormattingProvider orelse break :blk false;
         switch (documentFormattingProvider) {
             .bool => |supported| break :blk supported,
-            .DocumentFormattingOptions => break :blk true,
+            .document_formatting_options => break :blk true,
         }
     };
 

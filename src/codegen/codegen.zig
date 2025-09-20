@@ -47,6 +47,26 @@ pub fn main() !void {
     }
 }
 
+const FormatToSnakeCase = struct {
+    text: []const u8,
+
+    fn render(ctx: FormatToSnakeCase, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        for (ctx.text, 0..) |c, i| {
+            if (std.ascii.isUpper(c)) {
+                const isNextUpper = i + 1 < ctx.text.len and std.ascii.isUpper(ctx.text[i + 1]);
+                if (i != 0 and !isNextUpper) try writer.writeByte('_');
+                try writer.writeByte(std.ascii.toLower(c));
+            } else {
+                try writer.writeByte(c);
+            }
+        }
+    }
+};
+
+fn fmtToSnakeCase(text: []const u8) std.fmt.Alt(FormatToSnakeCase, FormatToSnakeCase.render) {
+    return .{ .data = .{ .text = text } };
+}
+
 const FormatDocs = struct {
     text: []const u8,
     comment_kind: CommentKind,
@@ -93,10 +113,10 @@ fn guessFieldName(meta_model: MetaModel, writer: *std.Io.Writer, typ: MetaModel.
             .boolean => try writer.writeAll("bool"),
             .null => try writer.writeAll("@\"null\""),
         },
-        .reference => |ref| try writer.print("{f}", .{std.zig.fmtId(ref.name)}),
+        .reference => |ref| try writer.print("{f}", .{fmtToSnakeCase(ref.name)}),
         .array => |arr| {
-            try writer.writeAll("array_of_");
             try guessFieldName(meta_model, writer, arr.element.*, 0);
+            try writer.writeByte('s');
         },
         .map => try writer.print("map_{d}", .{i}),
         .@"and" => try writer.print("and_{d}", .{i}),

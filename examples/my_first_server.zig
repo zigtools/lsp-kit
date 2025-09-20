@@ -107,7 +107,7 @@ pub const Handler = struct {
                 .@"utf-32" => .@"utf-32",
             },
             .textDocumentSync = .{
-                .TextDocumentSyncOptions = .{
+                .text_document_sync_options = .{
                     .openClose = true,
                     .change = .Full,
                 },
@@ -253,7 +253,7 @@ pub const Handler = struct {
 
         return .{
             .contents = .{
-                .MarkupContent = .{
+                .markup_content = .{
                     .kind = .plaintext,
                     .value = "I don't know what you are hovering over but I'd like to point out that you have a nice editor theme",
                 },
@@ -285,7 +285,7 @@ pub const Handler = struct {
                 .detail = "set the value",
             },
         });
-        return .{ .array_of_CompletionItem = completions };
+        return .{ .completion_items = completions };
     }
 
     /// We received a response message from the client/editor.

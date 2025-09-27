@@ -1,0 +1,488 @@
+.{
+    .disable_renaming = false, // usefull for debugging, will also disable symbol reordering
+    .remove_symbols = .{
+        // only used to extend other types
+        "_InitializeParams",
+        "BaseSymbolInformation",
+        "TextDocumentPositionParams",
+        "StaticRegistrationOptions",
+        "ResourceOperation",
+
+        // manually added
+        "LSPAny",
+        "LSPArray",
+        "LSPObject",
+    },
+    // zig fmt: off
+    .rename_symbols = .{
+        // Base
+        .{"Position",                                   "Position"},
+        .{"PositionEncodingKind",                       "Position.EncodingKind"},
+        .{"Range",                                      "Range"},
+        .{"DocumentSelector",                           "DocumentSelector"},
+        .{"TextEdit",                                   "TextEdit"},
+        .{"AnnotatedTextEdit",                          "TextEdit.Annotated"},
+        .{"ChangeAnnotation",                           "ChangeAnnotation"},
+        .{"ChangeAnnotationIdentifier",                 "ChangeAnnotationIdentifier"}, // TODO
+        .{"TextDocumentEdit",                           "TextDocumentEdit"},
+        .{"Location",                                   "Location"},
+        .{"LocationLink",                               "LocationLink"},
+        .{"Command",                                    "Command"},
+        .{"MarkupKind",                                 "MarkupKind"},
+        .{"MarkupContent",                              "MarkupContent"},
+        .{"GlobPattern",                                "GlobPattern"},
+        .{"Pattern",                                    "Pattern"},
+        .{"RelativePattern",                            "RelativePattern"},
+        .{"ErrorCodes",                                 "ErrorCodes"},
+        .{"LSPErrorCodes",                              "LSPErrorCodes"},
+
+        // TODO
+        .{"FormattingOptions",                          "FormattingOptions"},
+        .{"InitializedParams",                          "InitializedParams"},
+        .{"InitializeError",                            "InitializeError"},
+        .{"InitializeParams",                           "InitializeParams"},
+        .{"InitializeResult",                           "InitializeResult"},
+        .{"InsertTextFormat",                           "InsertTextFormat"},
+        .{"InsertTextMode",                             "InsertTextMode"},
+        .{"CancelParams",                               "CancelParams"},
+        .{"Color",                                      "Color"},
+        .{"StringValue",                                "StringValue"},
+        .{"SymbolInformation",                          "SymbolInformation"},
+        .{"SymbolKind",                                 "SymbolKind"},
+        .{"SymbolTag",                                  "SymbolTag"},
+        .{"ServerCapabilities",                         "ServerCapabilities"},
+        .{"PartialResultParams",                        "PartialResultParams"},
+        .{"PreviousResultId",                           "PreviousResultId"},
+        .{"ProgressParams",                             "ProgressParams"},
+        .{"ProgressToken",                              "ProgressToken"},
+
+        .{"TextDocumentItem",                           "TextDocument"},
+        .{"TextDocumentIdentifier",                     "TextDocument.Identifier"},
+        .{"VersionedTextDocumentIdentifier",            "TextDocument.Identifier.Versioned"},
+        .{"OptionalVersionedTextDocumentIdentifier",    "TextDocument.Identifier.Versioned.Optional"},
+        .{"DidChangeTextDocumentParams",                "TextDocument.DidChangeParams"},
+        .{"DidCloseTextDocumentParams",                 "TextDocument.DidCloseParams"},
+        .{"DidOpenTextDocumentParams",                  "TextDocument.DidOpenParams"},
+        .{"DidSaveTextDocumentParams",                  "TextDocument.DidSaveParams"},
+        .{"WillSaveTextDocumentParams",                 "TextDocument.WillSaveParams"},
+        .{"TextDocumentChangeRegistrationOptions",      "TextDocument.ChangeRegistrationOptions"},
+        .{"TextDocumentContentChangeEvent",             "TextDocument.ContentChangeEvent"},
+        .{"TextDocumentRegistrationOptions",            "TextDocument.RegistrationOptions"},
+        .{"TextDocumentSaveReason",                     "TextDocument.SaveReason"},
+        .{"TextDocumentSaveRegistrationOptions",        "TextDocument.SaveRegistrationOptions"},
+        .{"TextDocumentSyncKind",                       "TextDocument.SyncKind"},
+        .{"TextDocumentSyncOptions",                    "TextDocument.SyncOptions"},
+        .{"SaveOptions",                                "TextDocument.SyncSaveOptions"},
+
+        .{"NotebookDocument",                           "NotebookDocument"},
+        .{"NotebookDocumentChangeEvent",                "NotebookDocument.ChangeEvent"},
+        .{"NotebookDocumentIdentifier",                 "NotebookDocument.Identifier"},
+        .{"VersionedNotebookDocumentIdentifier",        "NotebookDocument.Identifier.Versioned"},
+        .{"NotebookDocumentSyncOptions",                "NotebookDocument.SyncOptions"},
+        .{"NotebookDocumentSyncRegistrationOptions",    "NotebookDocument.SyncRegistrationOptions"},
+        .{"DidChangeNotebookDocumentParams",            "NotebookDocument.DidChangeParams"},
+        .{"DidCloseNotebookDocumentParams",             "NotebookDocument.DidCloseParams"},
+        .{"DidOpenNotebookDocumentParams",              "NotebookDocument.DidOpenParams"},
+        .{"DidSaveNotebookDocumentParams",              "NotebookDocument.DidSaveParams"},
+        
+        .{"DocumentFilter",                             "DocumentFilter"},
+        .{"TextDocumentFilter",                         "DocumentFilter.Text"}, 
+        .{"NotebookDocumentFilter",                     "DocumentFilter.Notebook"},
+
+        .{"WorkspaceEdit",                              "WorkspaceEdit"},
+        .{"CreateFile",                                 "WorkspaceEdit.CreateFile"},
+        .{"CreateFileOptions",                          "WorkspaceEdit.CreateFile.Options"},
+        .{"RenameFile",                                 "WorkspaceEdit.RenameFile"},
+        .{"RenameFileOptions",                          "WorkspaceEdit.RenameFile.Options"},
+        .{"DeleteFile",                                 "WorkspaceEdit.DeleteFile"},
+        .{"DeleteFileOptions",                          "WorkspaceEdit.DeleteFile.Options"},
+        .{"WorkspaceEditClientCapabilities",            "WorkspaceEdit.ClientCapabilities"},
+        .{"ResourceOperationKind",                      "WorkspaceEdit.ClientCapabilities.ResourceOperationKind"},
+        .{"FailureHandlingKind",                        "WorkspaceEdit.ClientCapabilities.FailureHandlingKind"},
+
+        // client/registerCapability
+        .{"Registration",                               "Registration"},
+        .{"RegistrationParams",                         "Registration.Params"},
+
+        // client/unregisterCapability
+        .{"Unregistration",                             "Unregistration"},
+        .{"UnregistrationParams",                       "Unregistration.Params"},
+
+        .{"SetTraceParams",                             "trace.SetParams"},
+        .{"TraceValues",                                "trace.Value"},
+        .{"LogTraceParams",                             "trace.LogParams"},
+
+        // client capabilities
+        .{"ClientCapabilities",                         "ClientCapabilities"},
+        .{"TextDocumentClientCapabilities",             "ClientCapabilities.TextDocument"},
+        .{"TextDocumentSyncClientCapabilities",         "ClientCapabilities.TextDocument.Sync"},
+        .{"CompletionClientCapabilities",               "ClientCapabilities.TextDocument.Completion"},
+        .{"HoverClientCapabilities",                    "ClientCapabilities.TextDocument.Hover"},
+        .{"SignatureHelpClientCapabilities",            "ClientCapabilities.TextDocument.SignatureHelp"},
+        .{"DeclarationClientCapabilities",              "ClientCapabilities.TextDocument.Declaration"},
+        .{"DefinitionClientCapabilities",               "ClientCapabilities.TextDocument.Definition"},
+        .{"TypeDefinitionClientCapabilities",           "ClientCapabilities.TextDocument.TypeDefinition"},
+        .{"ImplementationClientCapabilities",           "ClientCapabilities.TextDocument.Implementation"},
+        .{"ReferenceClientCapabilities",                "ClientCapabilities.TextDocument.Reference"},
+        .{"DocumentHighlightClientCapabilities",        "ClientCapabilities.TextDocument.DocumentHighlight"},
+        .{"DocumentSymbolClientCapabilities",           "ClientCapabilities.TextDocument.DocumentSymbol"},
+        .{"CodeActionClientCapabilities",               "ClientCapabilities.TextDocument.CodeAction"},
+        .{"CodeLensClientCapabilities",                 "ClientCapabilities.TextDocument.CodeLens"},
+        .{"DocumentLinkClientCapabilities",             "ClientCapabilities.TextDocument.DocumentLink"},
+        .{"DocumentColorClientCapabilities",            "ClientCapabilities.TextDocument.DocumentColor"},
+        .{"DocumentFormattingClientCapabilities",       "ClientCapabilities.TextDocument.DocumentFormatting"},
+        .{"DocumentRangeFormattingClientCapabilities",  "ClientCapabilities.TextDocument.DocumentRangeFormatting"},
+        .{"DocumentOnTypeFormattingClientCapabilities", "ClientCapabilities.TextDocument.DocumentOnTypeFormatting"},
+        .{"RenameClientCapabilities",                   "ClientCapabilities.TextDocument.Rename"},
+        .{"FoldingRangeClientCapabilities",             "ClientCapabilities.TextDocument.FoldingRange"},
+        .{"SelectionRangeClientCapabilities",           "ClientCapabilities.TextDocument.SelectionRange"},
+        .{"PublishDiagnosticsClientCapabilities",       "ClientCapabilities.TextDocument.PublishDiagnostics"},
+        .{"CallHierarchyClientCapabilities",            "ClientCapabilities.TextDocument.CallHierarchy"},
+        .{"SemanticTokensClientCapabilities",           "ClientCapabilities.TextDocument.SemanticTokens"},
+        .{"LinkedEditingRangeClientCapabilities",       "ClientCapabilities.TextDocument.LinkedEditingRange"},
+        .{"MonikerClientCapabilities",                  "ClientCapabilities.TextDocument.Moniker"},
+        .{"TypeHierarchyClientCapabilities",            "ClientCapabilities.TextDocument.TypeHierarchy"},
+        .{"InlineValueClientCapabilities",              "ClientCapabilities.TextDocument.InlineValue"},
+        .{"InlayHintClientCapabilities",                "ClientCapabilities.TextDocument.InlayHint"},
+        .{"DiagnosticClientCapabilities",               "ClientCapabilities.TextDocument.Diagnostic"},
+        .{"InlineCompletionClientCapabilities",         "ClientCapabilities.TextDocument.InlineCompletion"},
+        .{"WorkspaceClientCapabilities",                "ClientCapabilities.Workspace"},
+        .{"WindowClientCapabilities",                   "ClientCapabilities.Window"},
+        .{"NotebookDocumentClientCapabilities",         "ClientCapabilities.NotebookDocument"},
+        .{"NotebookDocumentSyncClientCapabilities",     "ClientCapabilities.NotebookDocument.Sync"},
+        .{"GeneralClientCapabilities",                  "ClientCapabilities.General"},
+        .{"RegularExpressionsClientCapabilities",       "ClientCapabilities.General.RegularExpressions"},
+        .{"MarkdownClientCapabilities",                 "ClientCapabilities.General.Markdown"},
+
+        // textDocument/prepareRename
+        .{"PrepareRenameParams",                        "prepare_rename.Params"},
+        .{"PrepareRenameResult",                        "prepare_rename.Result"},
+
+        .{"PrepareSupportDefaultBehavior",              "rename.ClientCapabilities.PrepareSupportDefaultBehavior"},
+        .{"RenameOptions",                              "rename.Options"},
+        .{"RenameParams",                               "rename.Params"},
+        .{"RenameRegistrationOptions",                  "rename.RegistrationOptions"},
+
+        .{"ReferenceContext",                           "reference.Context"},
+        .{"ReferenceOptions",                           "reference.Options"},
+        .{"ReferenceParams",                            "reference.Params"},
+        .{"ReferenceRegistrationOptions",               "reference.RegistrationOptions"},
+
+        .{"CallHierarchyIncomingCall",                  "call_hierarchy.IncomingCall"},
+        .{"CallHierarchyIncomingCallsParams",           "call_hierarchy.IncomingCallsParams"},
+        .{"CallHierarchyItem",                          "call_hierarchy.Item"},
+        .{"CallHierarchyOptions",                       "call_hierarchy.Options"},
+        .{"CallHierarchyOutgoingCall",                  "call_hierarchy.OutgoingCall"},
+        .{"CallHierarchyOutgoingCallsParams",           "call_hierarchy.OutgoingCallsParams"},
+        .{"CallHierarchyPrepareParams",                 "call_hierarchy.PrepareParams"},
+        .{"CallHierarchyRegistrationOptions",           "call_hierarchy.RegistrationOptions"},
+
+        .{"CodeAction",                                 "code_action.Response"},
+        .{"CodeActionContext",                          "code_action.Context"},
+        .{"CodeActionKind",                             "code_action.Kind"},
+        .{"CodeActionOptions",                          "code_action.Options"},
+        .{"CodeActionParams",                           "code_action.Params"},
+        .{"CodeActionRegistrationOptions",              "code_action.RegistrationOptions"},
+        .{"CodeActionTriggerKind",                      "code_action.TriggerKind"},
+
+        .{"CodeLens",                                   "code_lens.Response"},
+        .{"CodeLensOptions",                            "code_lens.Options"},
+        .{"CodeLensParams",                             "code_lens.Params"},
+        .{"CodeLensRegistrationOptions",                "code_lens.RegistrationOptions"},
+        .{"CodeLensWorkspaceClientCapabilities",        "code_lens.WorkspaceClientCapabilities"},
+
+        .{"CompletionContext",                          "completion.Context"},
+        .{"CompletionItem",                             "completion.Item"},
+        .{"InsertReplaceEdit",                          "completion.Item.InsertReplaceEdit"},
+        .{"CompletionItemKind",                         "completion.Item.Kind"},
+        .{"CompletionItemLabelDetails",                 "completion.Item.LabelDetails"},
+        .{"CompletionItemTag",                          "completion.Item.Tag"},
+        .{"CompletionList",                             "completion.List"},
+        .{"CompletionOptions",                          "completion.Options"},
+        .{"CompletionParams",                           "completion.Params"},
+        .{"CompletionRegistrationOptions",              "completion.RegistrationOptions"},
+        .{"CompletionTriggerKind",                      "completion.TriggerKind"},
+
+        .{"Declaration",                                "declaration.Response"},
+        .{"DeclarationLink",                            "declaration.Link"},
+        .{"DeclarationOptions",                         "declaration.Options"},
+        .{"DeclarationParams",                          "declaration.Params"},
+        .{"DeclarationRegistrationOptions",             "declaration.RegistrationOptions"},
+
+        .{"Definition",                                 "definition.Response"},
+        .{"DefinitionLink",                             "definition.Link"},
+        .{"DefinitionOptions",                          "definition.Options"},
+        .{"DefinitionParams",                           "definition.Params"},
+        .{"DefinitionRegistrationOptions",              "definition.RegistrationOptions"},
+
+        .{"ImplementationOptions",                      "implementation.Options"},
+        .{"ImplementationParams",                       "implementation.Params"},
+        .{"ImplementationRegistrationOptions",          "implementation.RegistrationOptions"},
+
+        .{"TypeDefinitionOptions",                      "type_definition.Options"},
+        .{"TypeDefinitionParams",                       "type_definition.Params"},
+        .{"TypeDefinitionRegistrationOptions",          "type_definition.RegistrationOptions"},
+
+        .{"Diagnostic",                                 "Diagnostic"},
+        .{"CodeDescription",                            "Diagnostic.CodeDescription"},
+        .{"DiagnosticOptions",                          "Diagnostic.Options"},
+        .{"DiagnosticRegistrationOptions",              "Diagnostic.RegistrationOptions"},
+        .{"DiagnosticRelatedInformation",               "Diagnostic.RelatedInformation"},
+        .{"DiagnosticServerCancellationData",           "Diagnostic.ServerCancellationData"},
+        .{"DiagnosticSeverity",                         "Diagnostic.Severity"},
+        .{"DiagnosticTag",                              "Diagnostic.Tag"},
+        .{"DiagnosticWorkspaceClientCapabilities",      "Diagnostic.WorkspaceClientCapabilities"},
+
+        // textDocument/publishDiagnostics
+        .{"PublishDiagnosticsParams",                   "publish_diagnostics.Params"},
+
+        // textDocument/colorPresentation
+        .{"ColorPresentation",                          "ColorPresentation"},
+        .{"ColorPresentationParams",                    "ColorPresentation.Params"},
+
+        .{"ColorInformation",                           "DocumentColor"},
+        .{"DocumentColorOptions",                       "DocumentColor.Options"},
+        .{"DocumentColorParams",                        "DocumentColor.Params"},
+        .{"DocumentColorRegistrationOptions",           "DocumentColor.RegistrationOptions"},
+
+        .{"DocumentDiagnosticParams",                   "document_diagnostic.Params"},
+        .{"DocumentDiagnosticReport",                   "document_diagnostic.Report"},
+        .{"DocumentDiagnosticReportKind",               "document_diagnostic.Report.Kind"},
+        .{"DocumentDiagnosticReportPartialResult",      "document_diagnostic.Report.PartialResult"},
+        .{"UnchangedDocumentDiagnosticReport",          "document_diagnostic.Report.Unchanged"},
+        .{"RelatedUnchangedDocumentDiagnosticReport",   "document_diagnostic.Report.Unchanged.Related"},
+        .{"FullDocumentDiagnosticReport",               "document_diagnostic.Report.Full"},
+        .{"RelatedFullDocumentDiagnosticReport",        "document_diagnostic.Report.Full.Related"},
+
+        .{"DocumentFormattingOptions",                  "document_formatting.Options"},
+        .{"DocumentFormattingParams",                   "document_formatting.Params"},
+        .{"DocumentFormattingRegistrationOptions",      "document_formatting.RegistrationOptions"},
+
+        .{"DocumentHighlight",                          "DocumentHighlight"},
+        .{"DocumentHighlightKind",                      "DocumentHighlight.Kind"},
+        .{"DocumentHighlightOptions",                   "DocumentHighlight.Options"},
+        .{"DocumentHighlightParams",                    "DocumentHighlight.Params"},
+        .{"DocumentHighlightRegistrationOptions",       "DocumentHighlight.RegistrationOptions"},
+
+        .{"DocumentLink",                               "DocumentLink"},
+        .{"DocumentLinkOptions",                        "DocumentLink.Options"},
+        .{"DocumentLinkParams",                         "DocumentLink.Params"},
+        .{"DocumentLinkRegistrationOptions",            "DocumentLink.RegistrationOptions"},
+
+        .{"DocumentOnTypeFormattingOptions",            "document_on_type_formatting.Options"},
+        .{"DocumentOnTypeFormattingParams",             "document_on_type_formatting.Params"},
+        .{"DocumentOnTypeFormattingRegistrationOptions","document_on_type_formatting.RegistrationOptions"},
+
+        .{"DocumentRangeFormattingOptions",             "document_range_formatting.Options"},
+        .{"DocumentRangeFormattingParams",              "document_range_formatting.Params"},
+        .{"DocumentRangeFormattingRegistrationOptions", "document_range_formatting.RegistrationOptions"},
+
+        .{"DocumentRangesFormattingParams",             "document_ranges_formatting.Params"},
+
+        .{"DocumentSymbol",                             "DocumentSymbol"},
+        .{"DocumentSymbolOptions",                      "DocumentSymbol.Options"},
+        .{"DocumentSymbolParams",                       "DocumentSymbol.Params"},
+        .{"DocumentSymbolRegistrationOptions",          "DocumentSymbol.RegistrationOptions"},
+
+        .{"FoldingRange",                               "FoldingRange"},
+        .{"FoldingRangeKind",                           "FoldingRange.Kind"},
+        .{"FoldingRangeOptions",                        "FoldingRange.Options"},
+        .{"FoldingRangeParams",                         "FoldingRange.Params"},
+        .{"FoldingRangeRegistrationOptions",            "FoldingRange.RegistrationOptions"},
+        .{"FoldingRangeWorkspaceClientCapabilities",    "FoldingRange.WorkspaceClientCapabilities"},
+
+        .{"Hover",                                      "Hover"},
+        .{"MarkedString",                               "Hover.MarkedString"},
+        .{"HoverOptions",                               "Hover.Options"},
+        .{"HoverParams",                                "Hover.Params"},
+        .{"HoverRegistrationOptions",                   "Hover.RegistrationOptions"},
+
+        .{"InlayHint",                                  "InlayHint"},
+        .{"InlayHintKind",                              "InlayHint.Kind"},
+        .{"InlayHintLabelPart",                         "InlayHint.LabelPart"},
+        .{"InlayHintOptions",                           "InlayHint.Options"},
+        .{"InlayHintParams",                            "InlayHint.Params"},
+        .{"InlayHintRegistrationOptions",               "InlayHint.RegistrationOptions"},
+        .{"InlayHintWorkspaceClientCapabilities",       "InlayHint.WorkspaceClientCapabilities"},
+
+        .{"InlineCompletionContext",                    "inline_completion.Context"},
+        .{"InlineCompletionTriggerKind",                "inline_completion.Context.TriggerKind"},
+        .{"SelectedCompletionInfo",                     "inline_completion.Context.SelectedCompletionInfo"}, // TODO
+        .{"InlineCompletionItem",                       "inline_completion.Item"},
+        .{"InlineCompletionList",                       "inline_completion.List"},
+        .{"InlineCompletionOptions",                    "inline_completion.Options"},
+        .{"InlineCompletionParams",                     "inline_completion.Params"},
+        .{"InlineCompletionRegistrationOptions",        "inline_completion.RegistrationOptions"},
+
+        .{"InlineValue",                                "InlineValue"},
+        .{"InlineValueText",                            "InlineValue.Text"},
+        .{"InlineValueVariableLookup",                  "InlineValue.VariableLookup"},
+        .{"InlineValueEvaluatableExpression",           "InlineValue.EvaluatableExpression"},
+        .{"InlineValueContext",                         "InlineValue.Context"},
+        .{"InlineValueOptions",                         "InlineValue.Options"},
+        .{"InlineValueParams",                          "InlineValue.Params"},
+        .{"InlineValueRegistrationOptions",             "InlineValue.RegistrationOptions"},
+        .{"InlineValueWorkspaceClientCapabilities",     "InlineValue.WorkspaceClientCapabilities"},
+
+        // textDocument/linkedEditingRange
+        .{"LinkedEditingRangeOptions",                  "linked_editing_range.Options"},
+        .{"LinkedEditingRangeParams",                   "linked_editing_range.Params"},
+        .{"LinkedEditingRangeRegistrationOptions",      "linked_editing_range.RegistrationOptions"},
+        .{"LinkedEditingRanges",                        "linked_editing_range.Ranges"},
+
+        .{"Moniker",                                    "Moniker"},
+        .{"MonikerKind",                                "Moniker.Kind"},
+        .{"MonikerOptions",                             "Moniker.Options"},
+        .{"MonikerParams",                              "Moniker.Params"},
+        .{"MonikerRegistrationOptions",                 "Moniker.RegistrationOptions"},
+        .{"UniquenessLevel",                            "Moniker.UniquenessLevel"},
+
+        .{"NotebookCell",                               "NotebookCell"},
+        .{"NotebookCellArrayChange",                    "NotebookCell.ArrayChange"},
+        .{"ExecutionSummary",                           "NotebookCell.ExecutionSummary"},
+        .{"NotebookCellKind",                           "NotebookCell.Kind"},
+        .{"NotebookCellTextDocumentFilter",             "NotebookCell.TextDocumentFilter"},
+
+        .{"SelectionRange",                             "SelectionRange"},
+        .{"SelectionRangeOptions",                      "SelectionRange.Options"},
+        .{"SelectionRangeParams",                       "SelectionRange.Params"},
+        .{"SelectionRangeRegistrationOptions",          "SelectionRange.RegistrationOptions"},
+
+        .{"SemanticTokens",                             "SemanticTokens"},
+        .{"SemanticTokenModifiers",                     "SemanticTokens.Modifier"},
+        .{"TokenFormat",                                "SemanticTokens.Format"},
+        .{"SemanticTokensDelta",                        "SemanticTokens.Delta"},
+        .{"SemanticTokensDeltaParams",                  "SemanticTokens.Delta.Params"},
+        .{"SemanticTokensDeltaPartialResult",           "SemanticTokens.Delta.PartialResult"},
+        .{"SemanticTokensEdit",                         "SemanticTokens.Edit"},
+        .{"SemanticTokensLegend",                       "SemanticTokens.Legend"},
+        .{"SemanticTokensOptions",                      "SemanticTokens.Options"},
+        .{"SemanticTokensParams",                       "SemanticTokens.Params"},
+        .{"SemanticTokensPartialResult",                "SemanticTokens.PartialResult"},
+        .{"SemanticTokensRangeParams",                  "SemanticTokens.RangeParams"},
+        .{"SemanticTokensRegistrationOptions",          "SemanticTokens.RegistrationOptions"},
+        .{"SemanticTokensWorkspaceClientCapabilities",  "SemanticTokens.WorkspaceClientCapabilities"},
+        .{"SemanticTokenTypes",                         "SemanticTokens.Type"},
+
+        .{"SignatureHelp",                              "SignatureHelp"},
+        .{"SignatureHelpContext",                       "SignatureHelp.Context"},
+        .{"SignatureHelpOptions",                       "SignatureHelp.Options"},
+        .{"SignatureHelpParams",                        "SignatureHelp.Params"},
+        .{"SignatureHelpRegistrationOptions",           "SignatureHelp.RegistrationOptions"},
+        .{"SignatureHelpTriggerKind",                   "SignatureHelp.TriggerKind"},
+        .{"SignatureInformation",                       "SignatureHelp.Signature"},
+        .{"ParameterInformation",                       "SignatureHelp.Signature.Parameter"},
+
+        .{"TypeHierarchyItem",                          "type_hierarchy.Item"},
+        .{"TypeHierarchyOptions",                       "type_hierarchy.Options"},
+        .{"TypeHierarchyPrepareParams",                 "type_hierarchy.PrepareParams"},
+        .{"TypeHierarchyRegistrationOptions",           "type_hierarchy.RegistrationOptions"},
+        .{"TypeHierarchySubtypesParams",                "type_hierarchy.SubtypesParams"},
+        .{"TypeHierarchySupertypesParams",              "type_hierarchy.SupertypesParams"},
+
+        // WORKSPACE
+
+        // workspace/symbol
+        // workspaceSymbol/resolve
+        .{"WorkspaceSymbol",                            "workspace.Symbol"},
+        .{"WorkspaceSymbolClientCapabilities",          "workspace.Symbol.ClientCapabilities"},
+        .{"WorkspaceSymbolOptions",                     "workspace.Symbol.Options"},
+        .{"WorkspaceSymbolParams",                      "workspace.Symbol.Params"},
+        .{"WorkspaceSymbolRegistrationOptions",         "workspace.Symbol.RegistrationOptions"},
+
+        // workspace/configuration
+        .{"ConfigurationParams",                        "workspace.configuration.Params"},
+        .{"ConfigurationItem",                          "workspace.configuration.Item"},
+
+        // workspace/didChangeConfiguration
+        .{"DidChangeConfigurationClientCapabilities",   "workspace.configuration.DidChange.ClientCapabilities"},
+        .{"DidChangeConfigurationParams",               "workspace.configuration.DidChange.Params"},
+        .{"DidChangeConfigurationRegistrationOptions",  "workspace.configuration.DidChange.RegistrationOptions"},
+
+        // workspace/workspaceFolders
+        .{"WorkspaceFolder",                            "workspace.Folder"},
+        .{"WorkspaceFoldersChangeEvent",                "workspace.folders.ChangeEvent"},
+        .{"WorkspaceFoldersInitializeParams",           "workspace.folders.InitializeParams"},
+        .{"WorkspaceFoldersServerCapabilities",         "workspace.folders.ServerCapabilities"},
+        .{"DidChangeWorkspaceFoldersParams",            "workspace.folders.DidChangeParams"},
+
+        .{"FileOperationClientCapabilities",            "workspace.file_operation.ClientCapabilities"},
+        .{"FileOperationFilter",                        "workspace.file_operation.Filter"},
+        .{"FileOperationPattern",                       "workspace.file_operation.Filter.Pattern"},
+        .{"FileOperationPatternKind",                   "workspace.file_operation.Filter.Pattern.PatternKind"},
+        .{"FileOperationPatternOptions",                "workspace.file_operation.Filter.Pattern.PatternOptions"},
+        .{"FileOperationOptions",                       "workspace.file_operation.Options"},
+        .{"FileOperationRegistrationOptions",           "workspace.file_operation.RegistrationOptions"},
+
+        // workspace/willCreateFiles
+        // workspace/didCreateFiles
+        .{"CreateFilesParams",                          "workspace.CreateFilesParams"},
+        .{"FileCreate",                                 "workspace.FileCreate"},
+
+        // workspace/willRenameFiles
+        // workspace/didRenameFiles
+        .{"RenameFilesParams",                          "workspace.RenameFilesParams"},
+        .{"FileRename",                                 "workspace.FileRename"},
+
+        // workspace/willDeleteFiles
+        // workspace/didDeleteFiles
+        .{"DeleteFilesParams",                          "workspace.DeleteFilesParams"},
+        .{"FileDelete",                                 "workspace.FileDelete"},
+
+        // workspace/didChangeWatchedFiles
+        .{"DidChangeWatchedFilesClientCapabilities",    "workspace.did_change_watched_files.ClientCapabilities"},
+        .{"DidChangeWatchedFilesParams",                "workspace.did_change_watched_files.Params"},
+        .{"DidChangeWatchedFilesRegistrationOptions",   "workspace.did_change_watched_files.RegistrationOptions"},
+        .{"FileSystemWatcher",                          "workspace.FileSystemWatcher"},
+        .{"FileEvent",                                  "workspace.FileSystemWatcher.Event"},
+        .{"FileChangeType",                             "workspace.FileSystemWatcher.ChangeType"},
+        .{"WatchKind",                                  "workspace.FileSystemWatcher.Kind"},
+
+        // workspace/executeCommand
+        .{"ExecuteCommandClientCapabilities",           "workspace.execute_command.ClientCapabilities"},
+        .{"ExecuteCommandOptions",                      "workspace.execute_command.Options"},
+        .{"ExecuteCommandParams",                       "workspace.execute_command.Params"},
+        .{"ExecuteCommandRegistrationOptions",          "workspace.execute_command.RegistrationOptions"},
+
+        // workspace/applyEdit
+        .{"ApplyWorkspaceEditParams",                   "workspace.apply_workspace_edit.Params"},
+        .{"ApplyWorkspaceEditResult",                   "workspace.apply_workspace_edit.Result"},
+
+        // workspace/diagnostic
+        .{"WorkspaceDiagnosticParams",                  "workspace.diagnostic.Params"},
+        .{"WorkspaceDiagnosticReport",                  "workspace.diagnostic.Report"},
+        .{"WorkspaceDiagnosticReportPartialResult",     "workspace.diagnostic.Report.PartialResult"},
+        .{"WorkspaceDocumentDiagnosticReport",          "workspace.diagnostic.Report.Document"},
+        .{"WorkspaceFullDocumentDiagnosticReport",      "workspace.diagnostic.Report.Document.Full"},
+        .{"WorkspaceUnchangedDocumentDiagnosticReport", "workspace.diagnostic.Report.Document.Unchanged"},
+
+        // WINDOW
+        .{"MessageType",                                "window.MessageType"},
+
+        // window/showMessage
+        .{"ShowMessageParams",                          "window.ShowMessageParams"},
+
+        // window/showMessageRequest
+        .{"ShowMessageRequestClientCapabilities",       "window.show_message_request.ClientCapabilities"},
+        .{"ShowMessageRequestParams",                   "window.show_message_request.Params"},
+        .{"MessageActionItem",                          "window.show_message_request.Item"}, // TODO
+
+        // window/showDocument
+        .{"ShowDocumentClientCapabilities",             "window.show_document.ClientCapabilities"},
+        .{"ShowDocumentParams",                         "window.show_document.Params"},
+        .{"ShowDocumentResult",                         "window.show_document.Result"},
+
+        // window/logMessage
+        .{"LogMessageParams",                           "window.LogMessageParams"},
+
+        // window/workDoneProgress/*
+        .{"WorkDoneProgressBegin",                      "window.work_done_progress.Begin"},
+        .{"WorkDoneProgressReport",                     "window.work_done_progress.Report"},
+        .{"WorkDoneProgressEnd",                        "window.work_done_progress.End"},
+        .{"WorkDoneProgressParams",                     "window.work_done_progress.Params"},
+        .{"WorkDoneProgressOptions",                    "window.work_done_progress.Options"},
+        .{"WorkDoneProgressCreateParams",               "window.work_done_progress.CreateParams"},
+        .{"WorkDoneProgressCancelParams",               "window.work_done_progress.CancelParams"},
+    },
+    // zig fmt: on
+}

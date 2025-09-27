@@ -18,13 +18,7 @@ pub fn main() !void {
     const parsed_meta_model = try std.json.parseFromSlice(MetaModel, gpa, @embedFile("meta-model"), .{});
     defer parsed_meta_model.deinit();
 
-    var aw: std.Io.Writer.Allocating = .init(gpa);
-    defer aw.deinit();
-
-    @setEvalBranchQuota(100_000);
-    writeMetaModel(&aw.writer, parsed_meta_model.value) catch return error.OutOfMemory;
-
-    const source = try aw.toOwnedSliceSentinel(0);
+    const source = try renderMetaModel(gpa, parsed_meta_model.value);
     defer gpa.free(source);
 
     var zig_tree: std.zig.Ast = try .parse(gpa, source, .zig);
@@ -50,7 +44,7 @@ pub fn main() !void {
 const FormatToSnakeCase = struct {
     text: []const u8,
 
-    fn render(ctx: FormatToSnakeCase, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    pub fn format(ctx: FormatToSnakeCase, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         for (ctx.text, 0..) |c, i| {
             if (std.ascii.isUpper(c)) {
                 const isNextUpper = i + 1 < ctx.text.len and std.ascii.isUpper(ctx.text[i + 1]);
@@ -63,7 +57,7 @@ const FormatToSnakeCase = struct {
     }
 };
 
-fn fmtToSnakeCase(text: []const u8) std.fmt.Alt(FormatToSnakeCase, FormatToSnakeCase.render) {
+fn fmtToSnakeCase(text: []const u8) std.fmt.Alt(FormatToSnakeCase, FormatToSnakeCase.format) {
     return .{ .data = .{ .text = text } };
 }
 
@@ -76,19 +70,19 @@ const FormatDocs = struct {
         doc,
         top_level,
     };
+
+    pub fn format(ctx: FormatDocs, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        const prefix = switch (ctx.comment_kind) {
+            .normal => "// ",
+            .doc => "/// ",
+            .top_level => "//! ",
+        };
+        var iterator = std.mem.splitScalar(u8, ctx.text, '\n');
+        while (iterator.next()) |line| try writer.print("{s}{s}\n", .{ prefix, line });
+    }
 };
 
-fn renderDocs(ctx: FormatDocs, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    const prefix = switch (ctx.comment_kind) {
-        .normal => "// ",
-        .doc => "/// ",
-        .top_level => "//! ",
-    };
-    var iterator = std.mem.splitScalar(u8, ctx.text, '\n');
-    while (iterator.next()) |line| try writer.print("{s}{s}\n", .{ prefix, line });
-}
-
-fn fmtDocs(text: []const u8, comment_kind: FormatDocs.CommentKind) std.fmt.Alt(FormatDocs, renderDocs) {
+fn fmtDocs(text: []const u8, comment_kind: FormatDocs.CommentKind) std.fmt.Alt(FormatDocs, FormatDocs.format) {
     return .{ .data = .{ .text = text, .comment_kind = comment_kind } };
 }
 
@@ -156,369 +150,650 @@ fn isNullable(ty: MetaModel.Type) bool {
     return (or_ty.items.len == 2 and isNull(or_ty.items[1])) or isNull(or_ty.items[or_ty.items.len - 1]);
 }
 
-const FormatType = struct {
-    meta_model: *const MetaModel,
-    ty: MetaModel.Type,
-};
-
-fn renderType(ctx: FormatType, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    switch (ctx.ty) {
-        .base => |base| switch (base.name) {
-            .URI => try writer.writeAll("URI"),
-            .DocumentUri => try writer.writeAll("DocumentUri"),
-            .integer => try writer.writeAll("i32"),
-            .uinteger => try writer.writeAll("u32"),
-            .decimal => try writer.writeAll("f32"),
-            .RegExp => try writer.writeAll("RegExp"),
-            .string => try writer.writeAll("[]const u8"),
-            .boolean => try writer.writeAll("bool"),
-            .null => try writer.writeAll("?void"),
-        },
-        .reference => |ref| try writer.print("{f}", .{std.zig.fmtId(ref.name)}),
-        .array => |arr| try writer.print("[]const {f}", .{fmtType(arr.element.*, ctx.meta_model)}),
-        .map => |map| {
-            try writer.writeAll("parser.Map(");
-            switch (map.key) {
-                .base => |base| try switch (base.name) {
-                    .Uri => writer.writeAll("Uri"),
-                    .DocumentUri => writer.writeAll("DocumentUri"),
-                    .integer => writer.writeAll("i32"),
-                    .string => writer.writeAll("[]const u8"),
-                },
-                .reference => |ref| try writer.print("{f}", .{fmtType(.{ .reference = ref }, ctx.meta_model)}),
-            }
-            try writer.print(", {f})", .{fmtType(map.value.*, ctx.meta_model)});
-        },
-        .@"and" => |andt| {
-            try writer.writeAll("struct {\n");
-            for (andt.items) |item| {
-                if (item != .reference) @panic("Unimplemented and subject encountered!");
-                try writer.print("// And {s}\n{f}\n\n", .{
-                    item.reference.name,
-                    fmtReference(item.reference, null, ctx.meta_model),
-                });
-            }
-            try writer.writeAll("}");
-        },
-        .@"or" => |ort| {
-            if (unwrapOptional(ctx.ty)) |child_type| {
-                try writer.print("?{f}", .{fmtType(child_type, ctx.meta_model)});
-            } else if (isEnum(ctx.ty)) {
-                try writer.writeAll("enum {");
-                for (ort.items) |sub_type| {
-                    try writer.print("{s},\n", .{sub_type.stringLiteral.value});
-                }
-                try writer.writeByte('}');
-            } else {
-                const has_null = isNull(ort.items[ort.items.len - 1]);
-
-                if (has_null) try writer.writeByte('?');
-
-                try writer.writeAll("union(enum) {\n");
-                for (ort.items[0 .. ort.items.len - @intFromBool(has_null)], 0..) |sub_type, i| {
-                    try guessFieldName(ctx.meta_model.*, writer, sub_type, i);
-                    try writer.print(": {f},\n", .{fmtType(sub_type, ctx.meta_model)});
-                }
-                try writer.writeAll(
-                    \\pub const jsonParse = parser.UnionParser(@This()).jsonParse;
-                    \\pub const jsonParseFromValue = parser.UnionParser(@This()).jsonParseFromValue;
-                    \\pub const jsonStringify = parser.UnionParser(@This()).jsonStringify;
-                    \\}
-                );
-            }
-        },
+fn willRenderToDistinctType(ty: MetaModel.Type, meta_model: *const MetaModel) bool {
+    switch (ty) {
+        .base => return false,
+        .reference => return false,
+        .array => |arr| return willRenderToDistinctType(arr.element.*, meta_model),
+        .map => |map| return willRenderToDistinctType(map.value.*, meta_model),
+        .@"and" => return true,
+        .@"or" => return if (unwrapOptional(ty)) |child_type| willRenderToDistinctType(child_type, meta_model) else true,
         .tuple => |tup| {
-            try writer.writeAll("struct {");
-            for (tup.items, 0..) |ty, i| {
-                if (i != 0) try writer.writeByte(',');
-                try writer.print(" {f}", .{fmtType(ty, ctx.meta_model)});
+            for (tup.items) |sub_type| {
+                if (willRenderToDistinctType(sub_type, meta_model)) return true;
             }
-            try writer.writeAll(" }");
+            return false;
         },
-        .literal => |lit| {
-            try writer.writeAll("struct {");
-            if (lit.value.properties.len != 0) {
-                for (lit.value.properties) |property| {
-                    try writer.print("\n{f}", .{fmtProperty(property, ctx.meta_model)});
-                }
-                try writer.writeByte('\n');
-            }
-            try writer.writeByte('}');
-        },
-        .stringLiteral => |lit| try writer.print("[]const u8 = \"{f}\"", .{std.zig.fmtString(lit.value)}),
+        .literal => return true,
+        .stringLiteral => return false,
         .integerLiteral => @panic("unsupported"),
         .booleanLiteral => @panic("unsupported"),
     }
 }
 
-fn fmtType(ty: MetaModel.Type, meta_model: *const MetaModel) std.fmt.Alt(FormatType, renderType) {
-    return .{ .data = .{ .meta_model = meta_model, .ty = ty } };
-}
-
-const FormatProperty = struct {
-    meta_model: *const MetaModel,
-    property: MetaModel.Property,
-};
-
-fn renderProperty(ctx: FormatProperty, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    const is_undefinedable = ctx.property.optional orelse false;
-    const is_nullable = isNullable(ctx.property.type);
-    // WORKAROUND: recursive SelectionRange
-    const is_selection_range = ctx.property.type == .reference and std.mem.eql(u8, ctx.property.type.reference.name, "SelectionRange");
-
-    if (ctx.property.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .doc)});
-
-    try writer.print("{f}: {s}{f}{s},", .{
-        std.zig.fmtIdPU(ctx.property.name),
-        if (is_selection_range) "?*" else if (is_undefinedable and !is_nullable) "?" else "",
-        fmtType(ctx.property.type, ctx.meta_model),
-        if (is_nullable or is_undefinedable) " = null" else "",
-    });
-}
-
-fn fmtProperty(property: MetaModel.Property, meta_model: *const MetaModel) std.fmt.Alt(FormatProperty, renderProperty) {
-    return .{ .data = .{ .meta_model = meta_model, .property = property } };
-}
-
-const FormatProperties = struct {
-    meta_model: *const MetaModel,
+const Symbol = union(enum) {
+    namespace,
+    type_alias: MetaModel.TypeAlias,
     structure: MetaModel.Structure,
-    maybe_extender: ?MetaModel.Structure,
+    enumeration: MetaModel.Enumeration,
 };
 
-fn renderProperties(ctx: FormatProperties, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    const properties: []MetaModel.Property = ctx.structure.properties;
-    const extends: []MetaModel.Type = ctx.structure.extends orelse &.{};
-    const mixins: []MetaModel.Type = ctx.structure.mixins orelse &.{};
+const SymbolTree = struct {
+    root: std.StringArrayHashMapUnmanaged(Node) = .empty,
 
-    var has_properties = false;
+    const Node = struct {
+        symbol: Symbol,
+        children: std.StringArrayHashMapUnmanaged(Node) = .empty,
 
-    skip: for (properties) |property| {
-        if (ctx.maybe_extender) |ext| {
-            for (ext.properties) |ext_property| {
-                if (std.mem.eql(u8, property.name, ext_property.name)) {
-                    // std.log.info("Skipping implemented field emission: {s}", .{property.name});
-                    continue :skip;
+        fn deinit(
+            node: *Node,
+            gpa: std.mem.Allocator,
+        ) void {
+            for (node.children.values()) |*child_node| child_node.deinit(gpa);
+            node.children.deinit(gpa);
+            node.* = undefined;
+        }
+    };
+
+    fn deinit(
+        tree: *SymbolTree,
+        gpa: std.mem.Allocator,
+    ) void {
+        for (tree.root.values()) |*node| node.deinit(gpa);
+        tree.root.deinit(gpa);
+        tree.* = undefined;
+    }
+
+    fn insert(
+        tree: *SymbolTree,
+        gpa: std.mem.Allocator,
+        name: []const u8,
+        symbol: Symbol,
+    ) error{OutOfMemory}!void {
+        var name_it = std.mem.splitScalar(u8, name, '.');
+        var current_node: ?*Node = null;
+        while (name_it.next()) |name_component| {
+            const children = if (current_node) |node| &node.children else &tree.root;
+            const gop = try children.getOrPutValue(gpa, name_component, .{ .symbol = .namespace });
+            current_node = gop.value_ptr;
+        }
+        const node = current_node.?;
+        std.debug.assert(node.symbol == .namespace); // symbol collision
+        node.symbol = symbol;
+    }
+
+    /// Useful for debugging
+    fn dump(tree: *const SymbolTree) error{WriteFailed}!void {
+        const dumpNode = struct {
+            fn dumpNode(
+                children: std.StringArrayHashMapUnmanaged(Node),
+                writer: *std.Io.Writer,
+                indent: usize,
+            ) error{WriteFailed}!void {
+                for (children.keys(), children.values(), 0..) |name, child_node, i| {
+                    const is_last = i + 1 == children.count();
+                    try writer.splatBytesAll("│   ", indent);
+                    try writer.print("{s}── {s} {s}\n", .{ @as([]const u8, if (is_last) "└" else "├"), name });
+                    try dumpNode(child_node.children, writer, indent + 1);
                 }
             }
-        }
-        try writer.print("{f}\n", .{fmtProperty(property, ctx.meta_model)});
-        has_properties = true;
+        }.dumpNode;
+
+        var buffer: [4096]u8 = undefined;
+        const writer = std.debug.lockStderrWriter(&buffer);
+        defer std.debug.unlockStderrWriter();
+
+        try dumpNode(tree.root, writer, 0);
     }
-
-    if (has_properties and (extends.len != 0 or mixins.len != 0)) try writer.writeByte('\n');
-
-    for (extends) |ext| {
-        if (ext != .reference) @panic("Expected reference for extends!");
-        try writer.print("// Extends `{s}`\n{f}\n", .{
-            ext.reference.name,
-            fmtReference(ext.reference, ctx.structure, ctx.meta_model),
-        });
-    }
-
-    for (mixins) |ext| {
-        if (ext != .reference) @panic("Expected reference for mixin!");
-        try writer.print("// Uses mixin `{s}`\n{f}\n", .{
-            ext.reference.name,
-            fmtReference(ext.reference, ctx.structure, ctx.meta_model),
-        });
-    }
-}
-
-fn fmtProperties(
-    structure: MetaModel.Structure,
-    maybe_extender: ?MetaModel.Structure,
-    meta_model: *const MetaModel,
-) std.fmt.Alt(FormatProperties, renderProperties) {
-    return .{ .data = .{ .meta_model = meta_model, .structure = structure, .maybe_extender = maybe_extender } };
-}
-
-const FormatReference = struct {
-    meta_model: *const MetaModel,
-    reference: MetaModel.ReferenceType,
-    maybe_extender: ?MetaModel.Structure,
 };
 
-fn renderReference(ctx: FormatReference, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    for (ctx.meta_model.structures) |s| {
-        if (std.mem.eql(u8, s.name, ctx.reference.name)) {
-            try writer.print("{f}", .{fmtProperties(s, ctx.maybe_extender, ctx.meta_model)});
+const Renderer = struct {
+    scope_stack: std.ArrayList(Scope),
+    meta_model: *const MetaModel,
+    w: *std.Io.Writer,
+
+    const Scope = struct {
+        name: ?[]const u8,
+        symbols: std.StringArrayHashMapUnmanaged(SymbolTree.Node),
+    };
+
+    fn renderNode(r: *Renderer, node: *const SymbolTree.Node, name: []const u8) error{WriteFailed}!void {
+        r.scope_stack.appendAssumeCapacity(.{ .name = name, .symbols = node.children });
+        defer r.scope_stack.items.len -= 1;
+
+        switch (node.symbol) {
+            .namespace => {
+                try r.w.print("pub const {f} = struct {{\n", .{std.zig.fmtId(name)});
+                for (node.children.keys(), node.children.values()) |child_name, *child_node| {
+                    try r.renderNode(child_node, child_name);
+                }
+                try r.w.writeAll("};\n\n");
+            },
+            .type_alias => |type_alias| {
+                if (type_alias.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
+                try r.w.print("pub const {f} = ", .{std.zig.fmtId(name)});
+                try r.renderType(type_alias.type, node.children);
+                try r.w.writeAll(";\n\n");
+            },
+            .structure => |structure| {
+                if (structure.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
+
+                try r.w.print("pub const {f} = struct {{\n", .{std.zig.fmtId(name)});
+                try r.renderProperties(structure, null);
+                try r.w.writeAll("\n\n");
+                for (node.children.keys(), node.children.values()) |child_name, *child_node| {
+                    try r.renderNode(child_node, child_name);
+                }
+                try r.w.writeAll("};\n\n");
+            },
+            .enumeration => |enumeration| {
+                const container_kind = switch (enumeration.type.name) {
+                    .string => "union(enum)",
+                    .integer => "enum(i32)",
+                    .uinteger => "enum(u32)",
+                };
+                if (enumeration.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
+                try r.w.print("pub const {f} = {s} {{\n", .{ std.zig.fmtId(name), container_kind });
+
+                // WORKAROUND: the enumeration value `pascal` appears twice in LanguageKind
+                var found_pascal = false;
+
+                var contains_empty_enum = false;
+                for (enumeration.values) |entry| {
+                    if (entry.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
+                    switch (entry.value) {
+                        .string => |value| {
+                            if (std.mem.eql(u8, value, "pascal")) {
+                                if (found_pascal) continue;
+                                found_pascal = true;
+                            }
+                            if (value.len == 0) contains_empty_enum = true;
+                            const value_name = if (value.len == 0) "empty" else value;
+                            try r.w.print("{f},\n", .{std.zig.fmtIdP(value_name)});
+                        },
+                        .number => |value| try r.w.print("{f} = {d},\n", .{ std.zig.fmtIdP(entry.name), value }),
+                    }
+                }
+
+                const supportsCustomValues = enumeration.supportsCustomValues orelse false;
+
+                const field_name, const docs = if (supportsCustomValues) .{ "custom_value", "Custom Value" } else .{ "unknown_value", "Unknown Value" };
+                switch (enumeration.type.name) {
+                    .string => try r.w.print("{s}: []const u8,", .{field_name}),
+                    .integer, .uinteger => try r.w.print("/// {s}\n_,", .{docs}),
+                }
+
+                try r.w.writeAll("\n\n");
+                for (node.children.keys(), node.children.values()) |child_name, *child_node| {
+                    try r.renderNode(child_node, child_name);
+                }
+                try r.w.writeAll("\n\n");
+
+                switch (enumeration.type.name) {
+                    .string => {
+                        try r.w.print(
+                            \\pub const eql = parser.EnumCustomStringValues(@This(), {0}).eql;
+                            \\pub const jsonParse = parser.EnumCustomStringValues(@This(), {0}).jsonParse;
+                            \\pub const jsonParseFromValue = parser.EnumCustomStringValues(@This(), {0}).jsonParseFromValue;
+                            \\pub const jsonStringify = parser.EnumCustomStringValues(@This(), {0}).jsonStringify;
+                            \\
+                        , .{contains_empty_enum});
+                    },
+                    .integer, .uinteger => {
+                        try r.w.writeAll(
+                            \\pub const jsonStringify = parser.EnumStringifyAsInt(@This()).jsonStringify;
+                            \\
+                        );
+                    },
+                }
+
+                try r.w.writeAll("};\n\n");
+            },
+        }
+    }
+
+    fn renderReference(r: *Renderer, reference_name: []const u8) error{WriteFailed}!void {
+        if (config.disable_renaming) {
+            try r.w.writeAll(reference_name);
             return;
         }
+
+        if (remove_set.has(reference_name)) {
+            // keep the old name
+            try r.w.writeAll(reference_name);
+            return;
+        }
+        const namespaced_name = rename_map.get(reference_name).?;
+
+        var namespace_it: ReverseSymbolNamespaceIterator = .init(namespaced_name);
+        next: while (true) {
+            const symbol_name = namespace_it.next() orelse break;
+            var reference_count: usize = 0;
+            for (r.scope_stack.items) |scope| {
+                const is_referencing = scope.symbols.contains(symbol_name);
+                reference_count += @intFromBool(is_referencing);
+                if (reference_count > 1) continue :next;
+            }
+            switch (reference_count) {
+                0 => continue,
+                1 => {},
+                else => unreachable,
+            }
+            const trimmed_name = namespaced_name[if (namespace_it.index == 0) 0 else namespace_it.index + 1..];
+            try r.w.writeAll(trimmed_name);
+            return;
+        }
+        try r.w.writeAll("types.");
+        try r.w.writeAll(namespaced_name);
     }
-}
 
-fn fmtReference(
-    reference: MetaModel.ReferenceType,
-    maybe_extender: ?MetaModel.Structure,
-    meta_model: *const MetaModel,
-) std.fmt.Alt(FormatReference, renderReference) {
-    return .{ .data = .{ .meta_model = meta_model, .reference = reference, .maybe_extender = maybe_extender } };
-}
+    fn renderType(
+        r: *Renderer,
+        ty: MetaModel.Type,
+        children: std.StringArrayHashMapUnmanaged(SymbolTree.Node),
+    ) error{WriteFailed}!void {
+        switch (ty) {
+            .@"and", .@"or" => {},
+            else => if (children.count() != 0) @panic("unsupported"),
+        }
 
-fn writeRequest(writer: *std.Io.Writer, meta_model: MetaModel, request: MetaModel.Request) std.Io.Writer.Error!void {
-    if (request.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .normal)});
-
-    try writer.print(
-        \\.{{
-        \\    "{f}",
-        \\    RequestMetadata{{
-        \\        .method = {f},
-        \\        .documentation = {?f},
-        \\        .direction = .{s},
-        \\        .Params = {?f},
-        \\        .Result = {f},
-        \\        .PartialResult = {?f},
-        \\        .ErrorData = {?f},
-        \\        .registration = .{{ .method = {?f}, .Options = {?f} }},
-        \\    }},
-        \\}},
-        \\
-    , .{
-        std.zig.fmtString(request.method),
-        std.json.fmt(request.method, .{}),
-        if (request.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
-        messageDirectionName(request.messageDirection),
-        // NOTE: Multiparams not used here, so we dont have to implement them :)
-        if (request.params) |params| fmtType(params.Type, &meta_model) else null,
-        fmtType(request.result, &meta_model),
-        if (request.partialResult) |ty| fmtType(ty, &meta_model) else null,
-        if (request.errorData) |ty| fmtType(ty, &meta_model) else null,
-        if (request.registrationMethod) |method| std.json.fmt(method, .{}) else null,
-        if (request.registrationOptions) |ty| fmtType(ty, &meta_model) else null,
-    });
-}
-
-fn writeNotification(writer: *std.Io.Writer, meta_model: MetaModel, notification: MetaModel.Notification) std.Io.Writer.Error!void {
-    if (notification.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .normal)});
-
-    try writer.print(
-        \\.{{
-        \\    "{f}",
-        \\    NotificationMetadata{{
-        \\        .method = {f},
-        \\        .documentation = {?f},
-        \\        .direction = .{s},
-        \\        .Params = {?f},
-        \\        .registration = .{{ .method = {?f}, .Options = {?f} }},
-        \\    }},
-        \\}},
-        \\
-    , .{
-        std.zig.fmtString(notification.method),
-        std.json.fmt(notification.method, .{}),
-        if (notification.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
-        messageDirectionName(notification.messageDirection),
-        // NOTE: Multiparams not used here, so we dont have to implement them :)
-        if (notification.params) |params| fmtType(params.Type, &meta_model) else null,
-        if (notification.registrationMethod) |method| std.json.fmt(method, .{}) else null,
-        if (notification.registrationOptions) |ty| fmtType(ty, &meta_model) else null,
-    });
-}
-
-fn writeStructure(writer: *std.Io.Writer, meta_model: MetaModel, structure: MetaModel.Structure) std.Io.Writer.Error!void {
-    if (std.mem.eql(u8, structure.name, "LSPObject")) return;
-
-    if (structure.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .doc)});
-    try writer.print("pub const {f} = struct {{\n{f}}};\n\n", .{
-        std.zig.fmtId(structure.name),
-        fmtProperties(structure, null, &meta_model),
-    });
-}
-
-fn writeEnumeration(writer: *std.Io.Writer, meta_model: MetaModel, enumeration: MetaModel.Enumeration) std.Io.Writer.Error!void {
-    _ = meta_model;
-
-    if (enumeration.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .doc)});
-
-    const container_kind = switch (enumeration.type.name) {
-        .string => "union(enum)",
-        .integer => "enum(i32)",
-        .uinteger => "enum(u32)",
-    };
-    try writer.print("pub const {f} = {s} {{\n", .{ std.zig.fmtId(enumeration.name), container_kind });
-
-    // WORKAROUND: the enumeration value `pascal` appears twice in LanguageKind
-    var found_pascal = false;
-
-    var contains_empty_enum = false;
-    for (enumeration.values) |entry| {
-        if (entry.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .doc)});
-        switch (entry.value) {
-            .string => |value| {
-                if (std.mem.eql(u8, value, "pascal")) {
-                    if (found_pascal) continue;
-                    found_pascal = true;
-                }
-                if (value.len == 0) contains_empty_enum = true;
-                const name = if (value.len == 0) "empty" else value;
-                try writer.print("{f},\n", .{std.zig.fmtIdP(name)});
+        switch (ty) {
+            .base => |base| switch (base.name) {
+                .URI => try r.w.writeAll("URI"),
+                .DocumentUri => try r.w.writeAll("DocumentUri"),
+                .integer => try r.w.writeAll("i32"),
+                .uinteger => try r.w.writeAll("u32"),
+                .decimal => try r.w.writeAll("f32"),
+                .RegExp => try r.w.writeAll("RegExp"),
+                .string => try r.w.writeAll("[]const u8"),
+                .boolean => try r.w.writeAll("bool"),
+                .null => try r.w.writeAll("?void"),
             },
-            .number => |value| try writer.print("{f} = {d},\n", .{ std.zig.fmtIdP(entry.name), value }),
+            .reference => |ref| try r.renderReference(ref.name),
+            .array => |arr| {
+                try r.w.writeAll("[]const ");
+                try r.renderType(arr.element.*, children);
+            },
+            .map => |map| {
+                try r.w.writeAll("parser.Map(");
+                switch (map.key) {
+                    .base => |base| try switch (base.name) {
+                        .Uri => r.w.writeAll("Uri"),
+                        .DocumentUri => r.w.writeAll("DocumentUri"),
+                        .integer => r.w.writeAll("i32"),
+                        .string => r.w.writeAll("[]const u8"),
+                    },
+                    .reference => |ref| try r.renderType(.{ .reference = ref }, children),
+                }
+                try r.w.writeAll(", ");
+                try r.renderType(map.value.*, children);
+                try r.w.writeByte(')');
+            },
+            .@"and" => |andt| {
+                try r.w.writeAll("struct {\n");
+                for (andt.items) |item| {
+                    if (item != .reference) @panic("Unimplemented and subject encountered!");
+                    try r.w.print("// And {s}\n", .{item.reference.name});
+                    try r.renderReferenceInline(item.reference, null);
+                    try r.w.writeAll("\n\n");
+                }
+                for (children.keys(), children.values()) |child_name, *child_node| {
+                    try r.renderNode(child_node, child_name);
+                }
+                try r.w.writeAll("}");
+            },
+            .@"or" => |ort| {
+                if (unwrapOptional(ty)) |child_type| {
+                    if (children.count() != 0) @panic("unsupported");
+                    try r.w.writeByte('?');
+                    try r.renderType(child_type, children);
+                } else if (isEnum(ty)) {
+                    try r.w.writeAll("enum {");
+                    for (ort.items) |sub_type| {
+                        try r.w.print("{s},\n", .{sub_type.stringLiteral.value});
+                    }
+                    for (children.keys(), children.values()) |child_name, *child_node| {
+                        try r.renderNode(child_node, child_name);
+                    }
+                    try r.w.writeByte('}');
+                } else {
+                    const has_null = isNull(ort.items[ort.items.len - 1]);
+
+                    if (has_null) try r.w.writeByte('?');
+
+                    try r.w.writeAll("union(enum) {\n");
+                    for (ort.items[0 .. ort.items.len - @intFromBool(has_null)], 0..) |sub_type, i| {
+                        try guessFieldName(r.meta_model.*, r.w, sub_type, i);
+                        try r.w.writeAll(": ");
+                        try r.renderType(sub_type, .empty);
+                        try r.w.writeAll(",\n");
+                    }
+                    for (children.keys(), children.values()) |child_name, *child_node| {
+                        try r.renderNode(child_node, child_name);
+                    }
+                    try r.w.writeAll(
+                        \\pub const jsonParse = parser.UnionParser(@This()).jsonParse;
+                        \\pub const jsonParseFromValue = parser.UnionParser(@This()).jsonParseFromValue;
+                        \\pub const jsonStringify = parser.UnionParser(@This()).jsonStringify;
+                        \\}
+                    );
+                }
+            },
+            .tuple => |tup| {
+                try r.w.writeAll("struct {");
+                for (tup.items, 0..) |field_ty, i| {
+                    if (i != 0) try r.w.writeByte(',');
+                    try r.w.writeByte(' ');
+                    try r.renderType(field_ty, children);
+                }
+                try r.w.writeAll(" }");
+            },
+            .literal => |lit| {
+                try r.w.writeAll("struct {");
+                if (lit.value.properties.len != 0) {
+                    for (lit.value.properties) |property| {
+                        try r.w.writeByte('\n');
+                        try r.renderProperty(property);
+                    }
+                    try r.w.writeByte('\n');
+                }
+                try r.w.writeByte('}');
+            },
+            .stringLiteral => |lit| try r.w.print("[]const u8 = \"{f}\"", .{std.zig.fmtString(lit.value)}),
+            .integerLiteral => @panic("unsupported"),
+            .booleanLiteral => @panic("unsupported"),
         }
     }
 
-    const supportsCustomValues = enumeration.supportsCustomValues orelse false;
+    fn renderProperty(r: *Renderer, property: MetaModel.Property) error{WriteFailed}!void {
+        const is_undefinedable = property.optional orelse false;
+        const is_nullable = isNullable(property.type);
+        // WORKAROUND: recursive SelectionRange
+        const is_selection_range = property.type == .reference and std.mem.eql(u8, property.type.reference.name, "SelectionRange");
 
-    const field_name, const docs = if (supportsCustomValues) .{ "custom_value", "Custom Value" } else .{ "unknown_value", "Unknown Value" };
-    switch (enumeration.type.name) {
-        .string => {
-            try writer.print(
-                \\{s}: []const u8,
-                \\pub const eql = parser.EnumCustomStringValues(@This(), {1}).eql;
-                \\pub const jsonParse = parser.EnumCustomStringValues(@This(), {1}).jsonParse;
-                \\pub const jsonParseFromValue = parser.EnumCustomStringValues(@This(), {1}).jsonParseFromValue;
-                \\pub const jsonStringify = parser.EnumCustomStringValues(@This(), {1}).jsonStringify;
-                \\
-            , .{ field_name, contains_empty_enum });
-        },
-        .integer, .uinteger => {
-            try writer.print(
-                \\/// {s}
-                \\_,
-                \\pub const jsonStringify = parser.EnumStringifyAsInt(@This()).jsonStringify;
-                \\
-            , .{docs});
-        },
+        if (property.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
+
+        try r.w.print("{f}", .{std.zig.fmtIdPU(property.name)});
+        try r.w.writeAll(": ");
+        try r.w.writeAll(if (is_selection_range) "?*" else if (is_undefinedable and !is_nullable) "?" else "");
+        try r.renderType(property.type, .empty);
+        if (is_nullable or is_undefinedable) try r.w.writeAll(" = null");
+        try r.w.writeByte(',');
     }
 
-    try writer.writeAll("};\n\n");
+    fn renderProperties(
+        r: *Renderer,
+        structure: MetaModel.Structure,
+        maybe_extender: ?MetaModel.Structure,
+    ) error{WriteFailed}!void {
+        const properties: []MetaModel.Property = structure.properties;
+        const extends: []MetaModel.Type = structure.extends orelse &.{};
+        const mixins: []MetaModel.Type = structure.mixins orelse &.{};
+
+        var has_properties = false;
+
+        skip: for (properties) |property| {
+            if (maybe_extender) |ext| {
+                for (ext.properties) |ext_property| {
+                    if (std.mem.eql(u8, property.name, ext_property.name)) {
+                        // std.log.info("Skipping implemented field emission: {s}", .{property.name});
+                        continue :skip;
+                    }
+                }
+            }
+            try r.renderProperty(property);
+            try r.w.writeByte('\n');
+            has_properties = true;
+        }
+
+        if (has_properties and (extends.len != 0 or mixins.len != 0)) try r.w.writeByte('\n');
+
+        for (extends) |ext| {
+            if (ext != .reference) @panic("Expected reference for extends!");
+            try r.w.print("// Extends `{s}`\n", .{ext.reference.name});
+            try r.renderReferenceInline(ext.reference, structure);
+            try r.w.writeByte('\n');
+        }
+
+        for (mixins) |ext| {
+            if (ext != .reference) @panic("Expected reference for mixin!");
+            try r.w.print("// Uses mixin `{s}`\n", .{ext.reference.name});
+            try r.renderReferenceInline(ext.reference, structure);
+            try r.w.writeByte('\n');
+        }
+    }
+
+    fn renderReferenceInline(
+        r: *Renderer,
+        reference: MetaModel.ReferenceType,
+        maybe_extender: ?MetaModel.Structure,
+    ) error{WriteFailed}!void {
+        const structure = for (r.meta_model.structures) |s| {
+            if (std.mem.eql(u8, s.name, reference.name)) break s;
+        } else std.debug.panic("could not resolve reference to '{s}'", .{reference.name});
+
+        try r.renderProperties(structure, maybe_extender);
+    }
+
+    const FormatType = struct {
+        r: *Renderer,
+        ty: MetaModel.Type,
+        children: std.StringArrayHashMapUnmanaged(SymbolTree.Node) = .empty,
+
+        pub fn format(
+            ctx: FormatType,
+            writer: *std.Io.Writer,
+        ) std.Io.Writer.Error!void {
+            std.debug.assert(ctx.r.w == writer);
+            try ctx.r.renderType(ctx.ty, ctx.children);
+        }
+    };
+
+    fn renderRequest(r: *Renderer, request: MetaModel.Request) error{WriteFailed}!void {
+        if (request.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .normal)});
+
+        // TODO Ensure that we don't generate types with an inaccessible name
+        // if (request.params) |params| std.debug.assert(!willRenderToDistinctType(params.Type, r.meta_model));
+        // std.debug.assert(!willRenderToDistinctType(request.result, r.meta_model));
+        // if (request.partialResult) |partial_result| std.debug.assert(!willRenderToDistinctType(partial_result, r.meta_model));
+        try r.w.print(
+            \\.{{
+            \\    "{f}",
+            \\    RequestMetadata{{
+            \\        .method = {f},
+            \\        .documentation = {?f},
+            \\        .direction = .{s},
+            \\        .Params = {?f},
+            \\        .Result = {f},
+            \\        .PartialResult = {?f},
+            \\        .ErrorData = {?f},
+            \\        .registration = .{{ .method = {?f}, .Options = {?f} }},
+            \\    }},
+            \\}},
+            \\
+        , .{
+            std.zig.fmtString(request.method),
+            std.json.fmt(request.method, .{}),
+            if (request.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
+            messageDirectionName(request.messageDirection),
+            // NOTE: Multiparams not used here, so we dont have to implement them :)
+            if (request.params) |params| FormatType{ .r = r, .ty = params.Type } else null,
+            FormatType{ .r = r, .ty = request.result },
+            if (request.partialResult) |ty| FormatType{ .r = r, .ty = ty } else null,
+            if (request.errorData) |ty| FormatType{ .r = r, .ty = ty } else null,
+            if (request.registrationMethod) |method| std.json.fmt(method, .{}) else null,
+            if (request.registrationOptions) |ty| FormatType{ .r = r, .ty = ty } else null,
+        });
+    }
+
+    fn renderNotification(r: *Renderer, notification: MetaModel.Notification) error{WriteFailed}!void {
+        if (notification.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .normal)});
+
+        if (notification.params) |params| std.debug.assert(!willRenderToDistinctType(params.Type, r.meta_model));
+        try r.w.print(
+            \\.{{
+            \\    "{f}",
+            \\    NotificationMetadata{{
+            \\        .method = {f},
+            \\        .documentation = {?f},
+            \\        .direction = .{s},
+            \\        .Params = {?f},
+            \\        .registration = .{{ .method = {?f}, .Options = {?f} }},
+            \\    }},
+            \\}},
+            \\
+        , .{
+            std.zig.fmtString(notification.method),
+            std.json.fmt(notification.method, .{}),
+            if (notification.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
+            messageDirectionName(notification.messageDirection),
+            // NOTE: Multiparams not used here, so we dont have to implement them :)
+            if (notification.params) |params| FormatType{ .r = r, .ty = params.Type } else null,
+            if (notification.registrationMethod) |method| std.json.fmt(method, .{}) else null,
+            if (notification.registrationOptions) |ty| FormatType{ .r = r, .ty = ty } else null,
+        });
+    }
+};
+
+const ReverseSymbolNamespaceIterator = struct {
+    name: []const u8,
+    index: usize,
+
+    fn init(name: []const u8) ReverseSymbolNamespaceIterator {
+        return .{
+            .name = name,
+            .index = name.len,
+        };
+    }
+
+    fn next(it: *ReverseSymbolNamespaceIterator) ?[]const u8 {
+        if (it.index == 0) return null;
+        const name = it.name[0..it.index];
+        const new_index = std.mem.lastIndexOfScalar(u8, name, '.') orelse {
+            it.index = 0;
+            return name;
+        };
+        it.index = new_index;
+        return name[it.index + 1 ..];
+    }
+};
+
+test ReverseSymbolNamespaceIterator {
+    var it: ReverseSymbolNamespaceIterator = .init("foo.bar.baz");
+    try std.testing.expectEqualStrings("baz", it.next().?);
+    try std.testing.expectEqualStrings("bar", it.next().?);
+    try std.testing.expectEqualStrings("foo", it.next().?);
+    try std.testing.expect(it.next() == null);
+
+    it = .init("foo");
+    try std.testing.expectEqualStrings("foo", it.next().?);
+    try std.testing.expect(it.next() == null);
 }
 
-fn writeTypeAlias(writer: *std.Io.Writer, meta_model: MetaModel, type_alias: MetaModel.TypeAlias) std.Io.Writer.Error!void {
-    if (std.mem.startsWith(u8, type_alias.name, "LSP")) return;
+fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: MetaModel) error{OutOfMemory}!SymbolTree {
+    var symbols: std.StringArrayHashMapUnmanaged(Symbol) = .empty;
+    defer symbols.deinit(gpa);
 
-    if (type_alias.documentation) |docs| try writer.print("{f}", .{fmtDocs(docs, .doc)});
-    try writer.print("pub const {f} = {f};\n\n", .{ std.zig.fmtId(type_alias.name), fmtType(type_alias.type, &meta_model) });
-}
+    try symbols.ensureTotalCapacity(
+        gpa,
+        meta_model.structures.len + meta_model.enumerations.len + meta_model.typeAliases.len,
+    );
 
-fn writeMetaModel(writer: *std.Io.Writer, meta_model: MetaModel) std.Io.Writer.Error!void {
-    try writer.writeAll(@embedFile("lsp_types_base.zig") ++ "\n");
-
-    try writer.writeAll("// Type Aliases\n\n");
-    for (meta_model.typeAliases) |type_alias| {
-        try writeTypeAlias(writer, meta_model, type_alias);
-    }
-
-    try writer.writeAll("// Enumerations\n\n");
-    for (meta_model.enumerations) |enumeration| {
-        try writeEnumeration(writer, meta_model, enumeration);
-    }
-
-    try writer.writeAll("// Structures\n\n");
     for (meta_model.structures) |structure| {
-        try writeStructure(writer, meta_model, structure);
+        symbols.putAssumeCapacityNoClobber(structure.name, .{ .structure = structure });
+    }
+    for (meta_model.enumerations) |enumeration| {
+        symbols.putAssumeCapacityNoClobber(enumeration.name, .{ .enumeration = enumeration });
+    }
+    for (meta_model.typeAliases) |type_alias| {
+        symbols.putAssumeCapacityNoClobber(type_alias.name, .{ .type_alias = type_alias });
     }
 
-    try writer.writeAll("const notifications_generated: std.StaticStringMap(NotificationMetadata) = .initComptime(&.{\n");
-    for (meta_model.notifications) |notification| {
-        try writeNotification(writer, meta_model, notification);
-    }
-    try writer.writeAll("\n});");
+    var symbol_tree: SymbolTree = .{};
+    errdefer symbol_tree.deinit(gpa);
 
-    try writer.writeAll("const requests_generated: std.StaticStringMap(RequestMetadata) = .initComptime(&.{\n");
-    for (meta_model.requests) |request| {
-        try writeRequest(writer, meta_model, request);
+    for (config.remove_symbols) |name| {
+        std.debug.assert(symbols.swapRemove(name)); // invalid symbol in `remove_symbols`
     }
-    try writer.writeAll("\n});");
+
+    if (config.disable_renaming) {
+        for (symbols.keys(), symbols.values()) |name, symbol| {
+            try symbol_tree.insert(gpa, name, symbol);
+        }
+        return symbol_tree;
+    }
+
+    for (config.rename_symbols) |rename| {
+        const original_name, const new_name = rename;
+        const kv = symbols.fetchSwapRemove(original_name).?; // invalid symbol in `rename_symbols`
+        try symbol_tree.insert(gpa, new_name, kv.value);
+    }
+    if (symbols.count() > 0) {
+        std.debug.panic("The LSP type '{s}' is missing in @import(\"config.zig\").renames", .{symbols.keys()[0]});
+    }
+
+    return symbol_tree;
 }
+
+fn renderMetaModel(gpa: std.mem.Allocator, meta_model: MetaModel) error{ OutOfMemory, WriteFailed }![:0]u8 {
+    var symbol_tree = try constructSymbolTree(gpa, meta_model);
+    defer symbol_tree.deinit(gpa);
+
+    // try symbol_tree.dump();
+    // std.log.info("root symbol count: {d}", .{symbol_tree.root.count()});
+
+    var aw: std.Io.Writer.Allocating = .init(gpa);
+    defer aw.deinit();
+
+    var scope_stack: [8]Renderer.Scope = undefined;
+    var renderer: Renderer = .{
+        .scope_stack = .initBuffer(&scope_stack),
+        .meta_model = &meta_model,
+        .w = &aw.writer,
+    };
+    renderer.scope_stack.appendAssumeCapacity(.{ .name = null, .symbols = symbol_tree.root });
+
+    try renderer.w.writeAll(@embedFile("lsp_types_base.zig") ++ "\n");
+
+    for (symbol_tree.root.keys(), symbol_tree.root.values()) |name, *symbol| {
+        try renderer.renderNode(symbol, name);
+    }
+
+    try renderer.w.writeAll("const notifications_generated: std.StaticStringMap(NotificationMetadata) = .initComptime(&.{\n");
+    for (meta_model.notifications) |notification| {
+        try renderer.renderNotification(notification);
+    }
+    try renderer.w.writeAll("\n});");
+
+    try renderer.w.writeAll("const requests_generated: std.StaticStringMap(RequestMetadata) = .initComptime(&.{\n");
+    for (meta_model.requests) |request| {
+        // if (willRenderToDistinctType(request.result, &meta_model)) {
+        //     std.debug.print("TODO: {s}\n", .{request.method});
+        //     continue;
+        // }
+        // if (request.partialResult) |partial_result| {
+        //     if (willRenderToDistinctType(partial_result, &meta_model)) {
+        //         std.debug.print("TODO: {s}\n", .{request.method});
+        //         continue;
+        //     }
+        // }
+        try renderer.renderRequest(request);
+    }
+    try renderer.w.writeAll("\n});");
+
+    return try aw.toOwnedSliceSentinel(0);
+}
+
+const Config = struct {
+    disable_renaming: bool,
+    remove_symbols: []const []const u8,
+    rename_symbols: []const struct { []const u8, []const u8 },
+};
+
+const config: Config = @import("config.zon");
+const remove_set: std.StaticStringMap(void) = .initComptime(blk: {
+    var kvs: [config.remove_symbols.len]struct { []const u8 } = undefined;
+    for (&kvs, config.remove_symbols) |*kv, name| kv.* = .{name};
+    break :blk kvs;
+});
+const rename_map: std.StaticStringMap([]const u8) = .initComptime(config.rename_symbols);

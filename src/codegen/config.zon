@@ -24,7 +24,6 @@
         .{"AnnotatedTextEdit",                          "TextEdit.Annotated"},
         .{"ChangeAnnotation",                           "ChangeAnnotation"},
         .{"ChangeAnnotationIdentifier",                 "ChangeAnnotationIdentifier"}, // TODO
-        .{"TextDocumentEdit",                           "TextDocumentEdit"},
         .{"Location",                                   "Location"},
         .{"LocationLink",                               "LocationLink"},
         .{"Command",                                    "Command"},
@@ -57,6 +56,7 @@
         .{"ProgressToken",                              "ProgressToken"},
 
         .{"TextDocumentItem",                           "TextDocument"},
+        .{"TextDocumentEdit",                           "TextDocument.Edit"},
         .{"TextDocumentIdentifier",                     "TextDocument.Identifier"},
         .{"VersionedTextDocumentIdentifier",            "TextDocument.Identifier.Versioned"},
         .{"OptionalVersionedTextDocumentIdentifier",    "TextDocument.Identifier.Versioned.Optional"},
@@ -134,6 +134,7 @@
         .{"DocumentRangeFormattingClientCapabilities",  "ClientCapabilities.TextDocument.DocumentRangeFormatting"},
         .{"DocumentOnTypeFormattingClientCapabilities", "ClientCapabilities.TextDocument.DocumentOnTypeFormatting"},
         .{"RenameClientCapabilities",                   "ClientCapabilities.TextDocument.Rename"},
+        .{"PrepareSupportDefaultBehavior",              "ClientCapabilities.TextDocument.Rename.PrepareSupportDefaultBehavior"},
         .{"FoldingRangeClientCapabilities",             "ClientCapabilities.TextDocument.FoldingRange"},
         .{"SelectionRangeClientCapabilities",           "ClientCapabilities.TextDocument.SelectionRange"},
         .{"PublishDiagnosticsClientCapabilities",       "ClientCapabilities.TextDocument.PublishDiagnostics"},
@@ -147,6 +148,12 @@
         .{"DiagnosticClientCapabilities",               "ClientCapabilities.TextDocument.Diagnostic"},
         .{"InlineCompletionClientCapabilities",         "ClientCapabilities.TextDocument.InlineCompletion"},
         .{"WorkspaceClientCapabilities",                "ClientCapabilities.Workspace"},
+        .{"SemanticTokensWorkspaceClientCapabilities",  "ClientCapabilities.Workspace.SemanticTokens"},
+        .{"CodeLensWorkspaceClientCapabilities",        "ClientCapabilities.Workspace.CodeLens"},
+        .{"InlineValueWorkspaceClientCapabilities",     "ClientCapabilities.Workspace.InlineValue"},
+        .{"InlayHintWorkspaceClientCapabilities",       "ClientCapabilities.Workspace.InlayHint"},
+        .{"DiagnosticWorkspaceClientCapabilities",      "ClientCapabilities.Workspace.Diagnostic"},
+        .{"FoldingRangeWorkspaceClientCapabilities",    "ClientCapabilities.Workspace.FoldingRange"},
         .{"WindowClientCapabilities",                   "ClientCapabilities.Window"},
         .{"NotebookDocumentClientCapabilities",         "ClientCapabilities.NotebookDocument"},
         .{"NotebookDocumentSyncClientCapabilities",     "ClientCapabilities.NotebookDocument.Sync"},
@@ -158,7 +165,6 @@
         .{"PrepareRenameParams",                        "prepare_rename.Params"},
         .{"PrepareRenameResult",                        "prepare_rename.Result"},
 
-        .{"PrepareSupportDefaultBehavior",              "rename.ClientCapabilities.PrepareSupportDefaultBehavior"},
         .{"RenameOptions",                              "rename.Options"},
         .{"RenameParams",                               "rename.Params"},
         .{"RenameRegistrationOptions",                  "rename.RegistrationOptions"},
@@ -177,19 +183,18 @@
         .{"CallHierarchyPrepareParams",                 "call_hierarchy.PrepareParams"},
         .{"CallHierarchyRegistrationOptions",           "call_hierarchy.RegistrationOptions"},
 
-        .{"CodeAction",                                 "code_action.Response"},
-        .{"CodeActionContext",                          "code_action.Context"},
-        .{"CodeActionKind",                             "code_action.Kind"},
-        .{"CodeActionOptions",                          "code_action.Options"},
-        .{"CodeActionParams",                           "code_action.Params"},
-        .{"CodeActionRegistrationOptions",              "code_action.RegistrationOptions"},
-        .{"CodeActionTriggerKind",                      "code_action.TriggerKind"},
+        .{"CodeAction",                                 "CodeAction"},
+        .{"CodeActionContext",                          "CodeAction.Context"},
+        .{"CodeActionKind",                             "CodeAction.Kind"},
+        .{"CodeActionOptions",                          "CodeAction.Options"},
+        .{"CodeActionParams",                           "CodeAction.Params"},
+        .{"CodeActionRegistrationOptions",              "CodeAction.RegistrationOptions"},
+        .{"CodeActionTriggerKind",                      "CodeAction.TriggerKind"},
 
         .{"CodeLens",                                   "code_lens.Response"},
         .{"CodeLensOptions",                            "code_lens.Options"},
         .{"CodeLensParams",                             "code_lens.Params"},
         .{"CodeLensRegistrationOptions",                "code_lens.RegistrationOptions"},
-        .{"CodeLensWorkspaceClientCapabilities",        "code_lens.WorkspaceClientCapabilities"},
 
         .{"CompletionContext",                          "completion.Context"},
         .{"CompletionItem",                             "completion.Item"},
@@ -203,17 +208,17 @@
         .{"CompletionRegistrationOptions",              "completion.RegistrationOptions"},
         .{"CompletionTriggerKind",                      "completion.TriggerKind"},
 
-        .{"Declaration",                                "declaration.Response"},
-        .{"DeclarationLink",                            "declaration.Link"},
-        .{"DeclarationOptions",                         "declaration.Options"},
-        .{"DeclarationParams",                          "declaration.Params"},
-        .{"DeclarationRegistrationOptions",             "declaration.RegistrationOptions"},
+        .{"Declaration",                                "Declaration"},
+        .{"DeclarationLink",                            "Declaration.Link"},
+        .{"DeclarationOptions",                         "Declaration.Options"},
+        .{"DeclarationParams",                          "Declaration.Params"},
+        .{"DeclarationRegistrationOptions",             "Declaration.RegistrationOptions"},
 
-        .{"Definition",                                 "definition.Response"},
-        .{"DefinitionLink",                             "definition.Link"},
-        .{"DefinitionOptions",                          "definition.Options"},
-        .{"DefinitionParams",                           "definition.Params"},
-        .{"DefinitionRegistrationOptions",              "definition.RegistrationOptions"},
+        .{"Definition",                                 "Definition"},
+        .{"DefinitionLink",                             "Definition.Link"},
+        .{"DefinitionOptions",                          "Definition.Options"},
+        .{"DefinitionParams",                           "Definition.Params"},
+        .{"DefinitionRegistrationOptions",              "Definition.RegistrationOptions"},
 
         .{"ImplementationOptions",                      "implementation.Options"},
         .{"ImplementationParams",                       "implementation.Params"},
@@ -231,7 +236,6 @@
         .{"DiagnosticServerCancellationData",           "Diagnostic.ServerCancellationData"},
         .{"DiagnosticSeverity",                         "Diagnostic.Severity"},
         .{"DiagnosticTag",                              "Diagnostic.Tag"},
-        .{"DiagnosticWorkspaceClientCapabilities",      "Diagnostic.WorkspaceClientCapabilities"},
 
         // textDocument/publishDiagnostics
         .{"PublishDiagnosticsParams",                   "publish_diagnostics.Params"},
@@ -289,7 +293,6 @@
         .{"FoldingRangeOptions",                        "FoldingRange.Options"},
         .{"FoldingRangeParams",                         "FoldingRange.Params"},
         .{"FoldingRangeRegistrationOptions",            "FoldingRange.RegistrationOptions"},
-        .{"FoldingRangeWorkspaceClientCapabilities",    "FoldingRange.WorkspaceClientCapabilities"},
 
         .{"Hover",                                      "Hover"},
         .{"MarkedString",                               "Hover.MarkedString"},
@@ -303,7 +306,6 @@
         .{"InlayHintOptions",                           "InlayHint.Options"},
         .{"InlayHintParams",                            "InlayHint.Params"},
         .{"InlayHintRegistrationOptions",               "InlayHint.RegistrationOptions"},
-        .{"InlayHintWorkspaceClientCapabilities",       "InlayHint.WorkspaceClientCapabilities"},
 
         .{"InlineCompletionContext",                    "inline_completion.Context"},
         .{"InlineCompletionTriggerKind",                "inline_completion.Context.TriggerKind"},
@@ -322,7 +324,6 @@
         .{"InlineValueOptions",                         "InlineValue.Options"},
         .{"InlineValueParams",                          "InlineValue.Params"},
         .{"InlineValueRegistrationOptions",             "InlineValue.RegistrationOptions"},
-        .{"InlineValueWorkspaceClientCapabilities",     "InlineValue.WorkspaceClientCapabilities"},
 
         // textDocument/linkedEditingRange
         .{"LinkedEditingRangeOptions",                  "linked_editing_range.Options"},
@@ -361,7 +362,6 @@
         .{"SemanticTokensPartialResult",                "SemanticTokens.PartialResult"},
         .{"SemanticTokensRangeParams",                  "SemanticTokens.RangeParams"},
         .{"SemanticTokensRegistrationOptions",          "SemanticTokens.RegistrationOptions"},
-        .{"SemanticTokensWorkspaceClientCapabilities",  "SemanticTokens.WorkspaceClientCapabilities"},
         .{"SemanticTokenTypes",                         "SemanticTokens.Type"},
 
         .{"SignatureHelp",                              "SignatureHelp"},

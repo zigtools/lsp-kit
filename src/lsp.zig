@@ -996,7 +996,7 @@ test TypedJsonRPCResponse {
 
 /// A minimal non-allocating parser for the LSP Base Protocol Header Part.
 ///
-/// See https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#headerPart
+/// See https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
 pub const BaseProtocolHeader = struct {
     content_length: usize,
 

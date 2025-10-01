@@ -1,6 +1,6 @@
 //! Metamodel schema
 //! specification taken from:
-//! https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/metaModel/metaModel.ts
+//! https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/metaModel/metaModel.ts
 
 const std = @import("std");
 
@@ -322,12 +322,17 @@ pub const Type = union(TypeKind) {
 pub const Request = struct {
     /// The request's method name.
     method: []const u8,
+    /// The type name of the notifications if any.
+    typeName: ?[]const u8 = null,
+    /// The client capability property path if any.
+    clientCapability: ?[]const u8 = null,
+    /// The server capability property path if any.
+    serverCapability: ?[]const u8 = null,
     /// The parameter type(s) if any.
     params: ?Params = null,
     /// The result type.
     result: Type,
-    /// Optional partial result type if the request
-    /// supports partial result reporting.
+    /// Optional partial result type if the supports partial result reporting.
     partialResult: ?Type = null,
     /// An optional error data type.
     errorData: ?Type = null,
@@ -337,16 +342,15 @@ pub const Request = struct {
     /// Optional registration options if the request
     /// supports dynamic registration.
     registrationOptions: ?Type = null,
-    /// The direction in which this request is sent
-    /// in the protocol.
+    /// The direction in which this request is sent in the protocol.
     messageDirection: MessageDirection,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this request is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this request is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed feature. If omitted
-    /// the feature is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed feature. If omitted, the feature is final.
     proposed: ?bool = null,
     /// Whether the request is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -357,6 +361,12 @@ pub const Request = struct {
 pub const Notification = struct {
     /// The notification's method name.
     method: []const u8,
+    /// The type name of the notifications if any.
+    typeName: ?[]const u8 = null,
+    /// The client capability property path if any.
+    clientCapability: ?[]const u8 = null,
+    /// The server capability property path if any.
+    serverCapability: ?[]const u8 = null,
     /// The parameter type(s) if any.
     params: ?Params = null,
     /// Optional a dynamic registration method if it
@@ -365,16 +375,15 @@ pub const Notification = struct {
     /// Optional registration options if the notification
     /// supports dynamic registration.
     registrationOptions: ?Type = null,
-    /// The direction in which this notification is sent
-    /// in the protocol.
+    /// The direction in which this notification is sent in the protocol.
     messageDirection: MessageDirection,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this notification is
-    /// available. Is null if not known.
+    /// Since when (release number) this notification is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed feature. If omitted
-    /// the feature is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed feature. If omitted, the feature is final.
     proposed: ?bool = null,
     /// Whether the notification is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -414,16 +423,15 @@ pub const Property = struct {
     name: []const u8,
     /// The type of the property
     type: Type,
-    /// Whether the property is optional. If
-    /// omitted, the property is mandatory.
+    /// Whether the property is optional. If omitted, the property is mandatory.
     optional: ?bool = null,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this property is
-    /// available. Is null if not known.
+    /// Since when (release number) this property is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed property. If omitted
-    /// the structure is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed property. If omitted, the structure is final.
     proposed: ?bool = null,
     /// Whether the property is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -480,11 +488,11 @@ pub const Structure = struct {
     properties: []Property,
     /// An optional documentation;
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this structure is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this structure is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed structure. If omitted,
-    /// the structure is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed structure. If omitted, the structure is final.
     proposed: ?bool = null,
     /// Whether the structure is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -497,11 +505,11 @@ pub const StructureLiteral = struct {
     properties: []Property,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this structure is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this structure is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed structure. If omitted,
-    /// the structure is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed structure. If omitted, the structure is final.
     proposed: ?bool = null,
     /// Whether the structure is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -517,11 +525,11 @@ pub const TypeAlias = struct {
     type: Type,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this type alias is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this type alias is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed type alias. If omitted,
-    /// the type alias is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed type alias. If omitted, the type alias is final.
     proposed: ?bool = null,
     /// Whether the type alias is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -536,11 +544,11 @@ pub const EnumerationEntry = struct {
     value: Value,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this enumeration entry is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this enumeration entry is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed enumeration entry. If omitted,
-    /// the enumeration entry is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed enumeration entry. If omitted, the enumeration entry is final.
     proposed: ?bool = null,
     /// Whether the enumeration entry is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -593,16 +601,15 @@ pub const Enumeration = struct {
     /// The enum values.
     type: EnumerationType,
     /// Whether the enumeration supports custom values (e.g. values which are not
-    /// part of the set defined in `values`). If omitted no custom values are
-    /// supported.
+    /// part of the set defined in `values`). If omitted, no custom values are supported.
     supportsCustomValues: ?bool = null,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this enumeration entry is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this enumeration entry is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed enumeration. If omitted,
-    /// the enumeration is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed enumeration. If omitted, the enumeration is final.
     proposed: ?bool = null,
     /// Whether the enumeration is deprecated or not. If deprecated
     /// the property contains the deprecation message.

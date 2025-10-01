@@ -8,6 +8,7 @@
         "TextDocumentPositionParams",
         "StaticRegistrationOptions",
         "ResourceOperation",
+        "DiagnosticsCapabilities",
 
         // manually added
         "LSPAny",
@@ -35,6 +36,7 @@
         .{"RelativePattern",                            "RelativePattern"},
         .{"ErrorCodes",                                 "ErrorCodes"},
         .{"LSPErrorCodes",                              "LSPErrorCodes"},
+        .{"LocationUriOnly",                            "LocationUriOnly"},
 
         // TODO
         .{"FormattingOptions",                          "FormattingOptions"},
@@ -51,6 +53,9 @@
         .{"SymbolKind",                                 "SymbolKind"},
         .{"SymbolTag",                                  "SymbolTag"},
         .{"ServerCapabilities",                         "ServerCapabilities"},
+        .{"WorkspaceOptions",                           "ServerCapabilities.WorkspaceOptions"},
+        .{"ServerInfo",                                 "ServerInfo"},
+        .{"ClientInfo",                                 "ClientInfo"},
         .{"PartialResultParams",                        "PartialResultParams"},
         .{"PreviousResultId",                           "PreviousResultId"},
         .{"ProgressParams",                             "ProgressParams"},
@@ -58,6 +63,7 @@
 
         .{"TextDocumentItem",                           "TextDocument"},
         .{"TextDocumentEdit",                           "TextDocument.Edit"},
+        .{"SnippetTextEdit",                            "TextDocument.Edit.Snippet"},
         .{"TextDocumentIdentifier",                     "TextDocument.Identifier"},
         .{"VersionedTextDocumentIdentifier",            "TextDocument.Identifier.Versioned"},
         .{"OptionalVersionedTextDocumentIdentifier",    "TextDocument.Identifier.Versioned.Optional"},
@@ -74,12 +80,19 @@
         .{"TextDocumentSyncKind",                       "TextDocument.SyncKind"},
         .{"TextDocumentSyncOptions",                    "TextDocument.SyncOptions"},
         .{"SaveOptions",                                "TextDocument.SyncSaveOptions"},
+        .{"LanguageKind",                               "TextDocument.LanguageKind"},
 
         .{"NotebookDocument",                           "NotebookDocument"},
+        .{"NotebookCellLanguage",                       "NotebookDocument.CellLanguage"},
         .{"NotebookDocumentChangeEvent",                "NotebookDocument.ChangeEvent"},
+        .{"NotebookDocumentCellChanges",                "NotebookDocument.ChangeEvent.CellChanges"},
+        .{"NotebookDocumentCellContentChanges",         "NotebookDocument.ChangeEvent.CellContentChanges"},
+        .{"NotebookDocumentCellChangeStructure",        "NotebookDocument.ChangeEvent.CellContent.Structure"},
         .{"NotebookDocumentIdentifier",                 "NotebookDocument.Identifier"},
         .{"VersionedNotebookDocumentIdentifier",        "NotebookDocument.Identifier.Versioned"},
         .{"NotebookDocumentSyncOptions",                "NotebookDocument.SyncOptions"},
+        .{"NotebookDocumentFilterWithCells",            "NotebookDocument.SyncOptions.FilterWithCells"},
+        .{"NotebookDocumentFilterWithNotebook",         "NotebookDocument.SyncOptions.FilterWithNotebook"},
         .{"NotebookDocumentSyncRegistrationOptions",    "NotebookDocument.SyncRegistrationOptions"},
         .{"DidChangeNotebookDocumentParams",            "NotebookDocument.DidChangeParams"},
         .{"DidCloseNotebookDocumentParams",             "NotebookDocument.DidCloseParams"},
@@ -88,7 +101,13 @@
         
         .{"DocumentFilter",                             "DocumentFilter"},
         .{"TextDocumentFilter",                         "DocumentFilter.Text"}, 
+        .{"TextDocumentFilterScheme",                   "DocumentFilter.Text.Scheme"},
+        .{"TextDocumentFilterLanguage",                 "DocumentFilter.Text.Language"},
+        .{"TextDocumentFilterPattern",                  "DocumentFilter.Text.Pattern"},
         .{"NotebookDocumentFilter",                     "DocumentFilter.Notebook"},
+        .{"NotebookDocumentFilterNotebookType",         "DocumentFilter.Notebook.NotebookType"},
+        .{"NotebookDocumentFilterScheme",               "DocumentFilter.Notebook.Scheme"},
+        .{"NotebookDocumentFilterPattern",              "DocumentFilter.Notebook.Pattern"},
 
         .{"WorkspaceEdit",                              "WorkspaceEdit"},
         .{"CreateFile",                                 "WorkspaceEdit.CreateFile"},
@@ -98,8 +117,10 @@
         .{"DeleteFile",                                 "WorkspaceEdit.DeleteFile"},
         .{"DeleteFileOptions",                          "WorkspaceEdit.DeleteFile.Options"},
         .{"WorkspaceEditClientCapabilities",            "WorkspaceEdit.ClientCapabilities"},
+        .{"ChangeAnnotationsSupportOptions",            "WorkspaceEdit.ClientCapabilities.ChangeAnnotationsSupportOptions"},
         .{"ResourceOperationKind",                      "WorkspaceEdit.ClientCapabilities.ResourceOperationKind"},
         .{"FailureHandlingKind",                        "WorkspaceEdit.ClientCapabilities.FailureHandlingKind"},
+        .{"WorkspaceEditMetadata",                      "WorkspaceEdit.Metadata" },
 
         // client/registerCapability
         .{"Registration",                               "Registration"},
@@ -110,16 +131,29 @@
         .{"UnregistrationParams",                       "Unregistration.Params"},
 
         .{"SetTraceParams",                             "trace.SetParams"},
-        .{"TraceValues",                                "trace.Value"},
+        .{"TraceValue",                                 "trace.Value"},
         .{"LogTraceParams",                             "trace.LogParams"},
 
         // client capabilities
         .{"ClientCapabilities",                         "ClientCapabilities"},
         .{"TextDocumentClientCapabilities",             "ClientCapabilities.TextDocument"},
         .{"TextDocumentSyncClientCapabilities",         "ClientCapabilities.TextDocument.Sync"},
+        .{"TextDocumentFilterClientCapabilities",       "ClientCapabilities.TextDocument.Filter"},
         .{"CompletionClientCapabilities",               "ClientCapabilities.TextDocument.Completion"},
+        .{"ClientCompletionItemOptions",                "ClientCapabilities.TextDocument.Completion.ItemOptions"},
+        .{"CompletionItemDefaults",                     "ClientCapabilities.TextDocument.Completion.ItemDefaults"},
+        .{"EditRangeWithInsertReplace",                 "ClientCapabilities.TextDocument.Completion.EditRangeWithInsertReplace"},
+        .{"CompletionItemApplyKinds",                   "ClientCapabilities.TextDocument.Completion.ItemApplyKinds"},
+        .{"CompletionItemTagOptions",                   "ClientCapabilities.TextDocument.Completion.ItemTagOptions"},
+        .{"ClientCompletionItemOptionsKind",            "ClientCapabilities.TextDocument.Completion.ItemKindOptions"},
+        .{"ClientCompletionItemInsertTextModeOptions",  "ClientCapabilities.TextDocument.Completion.ItemInsertTextModeOptions"},
+        .{"ClientCompletionItemResolveOptions",         "ClientCapabilities.TextDocument.Completion.ItemResolveOptions"},
+        .{"CompletionListCapabilities",                 "ClientCapabilities.TextDocument.Completion.ListOptions"},
+        .{"ApplyKind",                                  "ClientCapabilities.TextDocument.Completion.ApplyKind"},
         .{"HoverClientCapabilities",                    "ClientCapabilities.TextDocument.Hover"},
         .{"SignatureHelpClientCapabilities",            "ClientCapabilities.TextDocument.SignatureHelp"},
+        .{"ClientSignatureInformationOptions",          "ClientCapabilities.TextDocument.SignatureHelp.InformationOptions"},
+        .{"ClientSignatureParameterInformationOptions", "ClientCapabilities.TextDocument.SignatureHelp.ParameterInformationOptions"},
         .{"DeclarationClientCapabilities",              "ClientCapabilities.TextDocument.Declaration"},
         .{"DefinitionClientCapabilities",               "ClientCapabilities.TextDocument.Definition"},
         .{"TypeDefinitionClientCapabilities",           "ClientCapabilities.TextDocument.TypeDefinition"},
@@ -128,7 +162,11 @@
         .{"DocumentHighlightClientCapabilities",        "ClientCapabilities.TextDocument.DocumentHighlight"},
         .{"DocumentSymbolClientCapabilities",           "ClientCapabilities.TextDocument.DocumentSymbol"},
         .{"CodeActionClientCapabilities",               "ClientCapabilities.TextDocument.CodeAction"},
+        .{ "ClientCodeActionResolveOptions",            "ClientCapabilities.TextDocument.CodeAction.ResolveOptions" },
+        .{"ClientCodeActionKindOptions",                "ClientCapabilities.TextDocument.CodeAction.KindOptions"},
+        .{"ClientCodeActionLiteralOptions",             "ClientCapabilities.TextDocument.CodeAction.LiteralOptions"},
         .{"CodeLensClientCapabilities",                 "ClientCapabilities.TextDocument.CodeLens"},
+        .{"ClientCodeLensResolveOptions",               "ClientCapabilities.TextDocument.CodeLens.ResolveOptions"},
         .{"DocumentLinkClientCapabilities",             "ClientCapabilities.TextDocument.DocumentLink"},
         .{"DocumentColorClientCapabilities",            "ClientCapabilities.TextDocument.DocumentColor"},
         .{"DocumentFormattingClientCapabilities",       "ClientCapabilities.TextDocument.DocumentFormatting"},
@@ -137,16 +175,22 @@
         .{"RenameClientCapabilities",                   "ClientCapabilities.TextDocument.Rename"},
         .{"PrepareSupportDefaultBehavior",              "ClientCapabilities.TextDocument.Rename.PrepareSupportDefaultBehavior"},
         .{"FoldingRangeClientCapabilities",             "ClientCapabilities.TextDocument.FoldingRange"},
+        .{"ClientFoldingRangeKindOptions",              "ClientCapabilities.TextDocument.FoldingRange.KindOptions"},
+        .{"ClientFoldingRangeOptions",                  "ClientCapabilities.TextDocument.FoldingRange.Options"},
         .{"SelectionRangeClientCapabilities",           "ClientCapabilities.TextDocument.SelectionRange"},
         .{"PublishDiagnosticsClientCapabilities",       "ClientCapabilities.TextDocument.PublishDiagnostics"},
         .{"CallHierarchyClientCapabilities",            "ClientCapabilities.TextDocument.CallHierarchy"},
         .{"SemanticTokensClientCapabilities",           "ClientCapabilities.TextDocument.SemanticTokens"},
+        .{"ClientSemanticTokensRequestOptions",         "ClientCapabilities.TextDocument.SemanticTokens.RequestOptions"},
+        .{"ClientSemanticTokensRequestFullDelta",       "ClientCapabilities.TextDocument.SemanticTokens.RequestOptions.FullDelta"},
         .{"LinkedEditingRangeClientCapabilities",       "ClientCapabilities.TextDocument.LinkedEditingRange"},
         .{"MonikerClientCapabilities",                  "ClientCapabilities.TextDocument.Moniker"},
         .{"TypeHierarchyClientCapabilities",            "ClientCapabilities.TextDocument.TypeHierarchy"},
         .{"InlineValueClientCapabilities",              "ClientCapabilities.TextDocument.InlineValue"},
         .{"InlayHintClientCapabilities",                "ClientCapabilities.TextDocument.InlayHint"},
+        .{"ClientInlayHintResolveOptions",              "ClientCapabilities.TextDocument.InlayHint.ResolveOptions"},
         .{"DiagnosticClientCapabilities",               "ClientCapabilities.TextDocument.Diagnostic"},
+        .{"ClientDiagnosticsTagOptions",                "ClientCapabilities.TextDocument.Diagnostic.TagOptions"},
         .{"InlineCompletionClientCapabilities",         "ClientCapabilities.TextDocument.InlineCompletion"},
         .{"WorkspaceClientCapabilities",                "ClientCapabilities.Workspace"},
         .{"SemanticTokensWorkspaceClientCapabilities",  "ClientCapabilities.Workspace.SemanticTokens"},
@@ -159,12 +203,16 @@
         .{"NotebookDocumentClientCapabilities",         "ClientCapabilities.NotebookDocument"},
         .{"NotebookDocumentSyncClientCapabilities",     "ClientCapabilities.NotebookDocument.Sync"},
         .{"GeneralClientCapabilities",                  "ClientCapabilities.General"},
+        .{"StaleRequestSupportOptions",                 "ClientCapabilities.General.StaleRequestSupportOptions"},
         .{"RegularExpressionsClientCapabilities",       "ClientCapabilities.General.RegularExpressions"},
+        .{"RegularExpressionEngineKind",                "ClientCapabilities.General.RegularExpressions.EngineKind"},
         .{"MarkdownClientCapabilities",                 "ClientCapabilities.General.Markdown"},
 
         // textDocument/prepareRename
         .{"PrepareRenameParams",                        "prepare_rename.Params"},
         .{"PrepareRenameResult",                        "prepare_rename.Result"},
+        .{"PrepareRenameDefaultBehavior",               "prepare_rename.DefaultBehavior" },
+        .{"PrepareRenamePlaceholder",                   "prepare_rename.Placeholder" },
 
         .{"RenameOptions",                              "rename.Options"},
         .{"RenameParams",                               "rename.Params"},
@@ -191,6 +239,10 @@
         .{"CodeActionParams",                           "CodeAction.Params"},
         .{"CodeActionRegistrationOptions",              "CodeAction.RegistrationOptions"},
         .{"CodeActionTriggerKind",                      "CodeAction.TriggerKind"},
+        .{"CodeActionDisabled",                         "CodeAction.Disabled"},
+        .{"CodeActionTagOptions",                       "CodeAction.TagOptions"},
+        .{"CodeActionTag",                              "CodeAction.Tag"},
+        .{"CodeActionKindDocumentation",                "CodeAction.KindDocumentation"},
 
         .{"CodeLens",                                   "code_lens.Response"},
         .{"CodeLensOptions",                            "code_lens.Options"},
@@ -205,6 +257,7 @@
         .{"CompletionItemTag",                          "completion.Item.Tag"},
         .{"CompletionList",                             "completion.List"},
         .{"CompletionOptions",                          "completion.Options"},
+        .{"ServerCompletionItemOptions",                "completion.Options.ItemOptions"},
         .{"CompletionParams",                           "completion.Params"},
         .{"CompletionRegistrationOptions",              "completion.RegistrationOptions"},
         .{"CompletionTriggerKind",                      "completion.TriggerKind"},
@@ -297,6 +350,7 @@
 
         .{"Hover",                                      "Hover"},
         .{"MarkedString",                               "Hover.MarkedString"},
+        .{"MarkedStringWithLanguage",                   "Hover.MarkedString.WithLanguage"},
         .{"HoverOptions",                               "Hover.Options"},
         .{"HoverParams",                                "Hover.Params"},
         .{"HoverRegistrationOptions",                   "Hover.RegistrationOptions"},
@@ -359,6 +413,7 @@
         .{"SemanticTokensEdit",                         "SemanticTokens.Edit"},
         .{"SemanticTokensLegend",                       "SemanticTokens.Legend"},
         .{"SemanticTokensOptions",                      "SemanticTokens.Options"},
+        .{"SemanticTokensFullDelta",                    "SemanticTokens.Options.FullDelta"},
         .{"SemanticTokensParams",                       "SemanticTokens.Params"},
         .{"SemanticTokensPartialResult",                "SemanticTokens.PartialResult"},
         .{"SemanticTokensRangeParams",                  "SemanticTokens.RangeParams"},
@@ -387,6 +442,9 @@
         // workspaceSymbol/resolve
         .{"WorkspaceSymbol",                            "workspace.Symbol"},
         .{"WorkspaceSymbolClientCapabilities",          "workspace.Symbol.ClientCapabilities"},
+        .{"ClientSymbolKindOptions",                    "workspace.Symbol.ClientCapabilities.SymbolKindOptions"},
+        .{"ClientSymbolTagOptions",                     "workspace.Symbol.ClientCapabilities.TagOptions"},
+        .{"ClientSymbolResolveOptions",                 "workspace.Symbol.ClientCapabilities.ResolveOptions"},
         .{"WorkspaceSymbolOptions",                     "workspace.Symbol.Options"},
         .{"WorkspaceSymbolParams",                      "workspace.Symbol.Params"},
         .{"WorkspaceSymbolRegistrationOptions",         "workspace.Symbol.RegistrationOptions"},
@@ -396,9 +454,9 @@
         .{"ConfigurationItem",                          "workspace.configuration.Item"},
 
         // workspace/didChangeConfiguration
-        .{"DidChangeConfigurationClientCapabilities",   "workspace.configuration.DidChange.ClientCapabilities"},
-        .{"DidChangeConfigurationParams",               "workspace.configuration.DidChange.Params"},
-        .{"DidChangeConfigurationRegistrationOptions",  "workspace.configuration.DidChange.RegistrationOptions"},
+        .{"DidChangeConfigurationClientCapabilities",   "workspace.configuration.did_change.ClientCapabilities"},
+        .{"DidChangeConfigurationParams",               "workspace.configuration.did_change.Params"},
+        .{"DidChangeConfigurationRegistrationOptions",  "workspace.configuration.did_change.RegistrationOptions"},
 
         // workspace/workspaceFolders
         .{"WorkspaceFolder",                            "workspace.Folder"},
@@ -457,6 +515,16 @@
         .{"WorkspaceFullDocumentDiagnosticReport",      "workspace.diagnostic.Report.Document.Full"},
         .{"WorkspaceUnchangedDocumentDiagnosticReport", "workspace.diagnostic.Report.Document.Unchanged"},
 
+        // workspace/textDocumentContent
+        .{"TextDocumentContentChangePartial",       "workspace.text_document_content.ChangePartial"},
+        .{"TextDocumentContentChangeWholeDocument", "workspace.text_document_content.ChangeWholeDocument"},
+        .{"TextDocumentContentClientCapabilities",  "workspace.text_document_content.ClientCapabilities"},
+        .{"TextDocumentContentOptions",             "workspace.text_document_content.Options"},
+        .{"TextDocumentContentParams",              "workspace.text_document_content.Params"},
+        .{"TextDocumentContentRefreshParams",       "workspace.text_document_content.RefreshParams"},
+        .{"TextDocumentContentRegistrationOptions", "workspace.text_document_content.RegistrationOptions"},
+        .{"TextDocumentContentResult",              "workspace.text_document_content.Result"},
+
         // WINDOW
         .{"MessageType",                                "window.MessageType"},
 
@@ -465,6 +533,7 @@
 
         // window/showMessageRequest
         .{"ShowMessageRequestClientCapabilities",       "window.show_message_request.ClientCapabilities"},
+        .{"ClientShowMessageActionItemOptions",         "window.show_message_request.ClientCapabilities.ItemOptions"},
         .{"ShowMessageRequestParams",                   "window.show_message_request.Params"},
         .{"MessageActionItem",                          "window.show_message_request.Item"}, // TODO
 
@@ -488,7 +557,6 @@
     // TODO make it possible to control where the symbol should be placed
     .symbolize = .{
         .{ "CompletionItem.documentation.?",                        "Documentation" },
-        .{ "InitializeParams.clientInfo.?",                         "ClientInfo" },
         .{ "SemanticTokensOptions.range.?",                         "SemanticTokens.Options.Range" },
         .{ "SemanticTokensOptions.full.?",                          "SemanticTokens.Options.Full" },
         .{ "Diagnostic.code.?",                                     "Diagnostic.Code" },
@@ -526,7 +594,6 @@
         .{ "ServerCapabilities.inlayHintProvider.?",                "ServerCapabilities.InlayHintOptions" },
         .{ "ServerCapabilities.diagnosticProvider.?",               "ServerCapabilities.DiagnosticOptions" },
         .{ "ServerCapabilities.inlineCompletionProvider.?",         "ServerCapabilities.InlineCompletionOptions" },
-        .{ "ServerCapabilities.workspace.?",                        "ServerCapabilities.Workspace" },
     },
     // zig fmt: on
 }

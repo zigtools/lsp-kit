@@ -1,5 +1,6 @@
 .{
     .disable_renaming = false, // usefull for debugging, will also disable symbol reordering
+    .disable_symbolization = false, // usefull for debugging
     .remove_symbols = .{
         // only used to extend other types
         "_InitializeParams",
@@ -483,6 +484,49 @@
         .{"WorkDoneProgressOptions",                    "window.work_done_progress.Options"},
         .{"WorkDoneProgressCreateParams",               "window.work_done_progress.CreateParams"},
         .{"WorkDoneProgressCancelParams",               "window.work_done_progress.CancelParams"},
+    },
+    // TODO make it possible to control where the symbol should be placed
+    .symbolize = .{
+        .{ "CompletionItem.documentation.?",                        "Documentation" },
+        .{ "InitializeParams.clientInfo.?",                         "ClientInfo" },
+        .{ "SemanticTokensOptions.range.?",                         "SemanticTokens.Options.Range" },
+        .{ "SemanticTokensOptions.full.?",                          "SemanticTokens.Options.Full" },
+        .{ "Diagnostic.code.?",                                     "Diagnostic.Code" },
+        .{ "InlayHint.label",                                       "InlayHint.Label" },
+        .{ "InlineCompletionItem.insertText",                       "inline_completion.Item.InsertText" },
+        .{ "ParameterInformation.label",                            "SignatureHelp.Signature.Parameter.Label" },
+        .{ "Hover.contents",                                        "Hover.Contents" },
+        .{ "CompletionItem.textEdit.?",                             "completion.Item.TextEdit" },
+
+        .{ "ServerCapabilities.textDocumentSync.?",                 "ServerCapabilities.TextDocumentSync" },
+        .{ "ServerCapabilities.notebookDocumentSync.?",             "ServerCapabilities.NotebookDocumentSync" },
+        .{ "ServerCapabilities.hoverProvider.?",                    "ServerCapabilities.HoverOptions" },
+        .{ "ServerCapabilities.declarationProvider.?",              "ServerCapabilities.DeclarationOptions" },
+        .{ "ServerCapabilities.definitionProvider.?",               "ServerCapabilities.DefinitionOptions" },
+        .{ "ServerCapabilities.typeDefinitionProvider.?",           "ServerCapabilities.TypeDefinitionOptions" },
+        .{ "ServerCapabilities.implementationProvider.?",           "ServerCapabilities.ImplementationOptions" },
+        .{ "ServerCapabilities.referencesProvider.?",               "ServerCapabilities.ReferencesOptions" },
+        .{ "ServerCapabilities.documentHighlightProvider.?",        "ServerCapabilities.DocumentHighlightOptions" },
+        .{ "ServerCapabilities.documentSymbolProvider.?",           "ServerCapabilities.DocumentSymbolOptions" },
+        .{ "ServerCapabilities.codeActionProvider.?",               "ServerCapabilities.CodeActionOptions" },
+        .{ "ServerCapabilities.colorProvider.?",                    "ServerCapabilities.ColorOptions" },
+        .{ "ServerCapabilities.workspaceSymbolProvider.?",          "ServerCapabilities.WorkspaceSymbolOptions" },
+        .{ "ServerCapabilities.documentFormattingProvider.?",       "ServerCapabilities.DocumentFormattingOptions" },
+        .{ "ServerCapabilities.documentRangeFormattingProvider.?",  "ServerCapabilities.DocumentRangeFormattingOptions" },
+        .{ "ServerCapabilities.documentOnTypeFormattingProvider.?", "ServerCapabilities.DocumentOnTypeFormattingOptions" },
+        .{ "ServerCapabilities.renameProvider.?",                   "ServerCapabilities.RenameOptions" },
+        .{ "ServerCapabilities.foldingRangeProvider.?",             "ServerCapabilities.FoldingRangeOptions" },
+        .{ "ServerCapabilities.selectionRangeProvider.?",           "ServerCapabilities.SelectionRangeOptions" },
+        .{ "ServerCapabilities.callHierarchyProvider.?",            "ServerCapabilities.CallHierarchyOptions" },
+        .{ "ServerCapabilities.linkedEditingRangeProvider.?",       "ServerCapabilities.LinkedEditingRangeOptions" },
+        .{ "ServerCapabilities.semanticTokensProvider.?",           "ServerCapabilities.SemanticTokensOptions" },
+        .{ "ServerCapabilities.monikerProvider.?",                  "ServerCapabilities.MonikerOptions" },
+        .{ "ServerCapabilities.typeHierarchyProvider.?",            "ServerCapabilities.TypeHierarchyOptions" },
+        .{ "ServerCapabilities.inlineValueProvider.?",              "ServerCapabilities.InlineValueOptions" },
+        .{ "ServerCapabilities.inlayHintProvider.?",                "ServerCapabilities.InlayHintOptions" },
+        .{ "ServerCapabilities.diagnosticProvider.?",               "ServerCapabilities.DiagnosticOptions" },
+        .{ "ServerCapabilities.inlineCompletionProvider.?",         "ServerCapabilities.InlineCompletionOptions" },
+        .{ "ServerCapabilities.workspace.?",                        "ServerCapabilities.Workspace" },
     },
     // zig fmt: on
 }

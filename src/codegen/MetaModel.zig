@@ -86,6 +86,28 @@ pub const MapKeyType = union(enum) {
     },
     reference: ReferenceType,
 
+    pub fn hash(ty: MapKeyType) u64 {
+        var hasher: std.hash.Wyhash = .init(0);
+        ty.hashWithHasher(&hasher);
+        return hasher.final();
+    }
+
+    pub fn hashWithHasher(ty: MapKeyType, hasher: anytype) void {
+        std.hash.autoHash(hasher, std.meta.activeTag(ty));
+        switch (ty) {
+            .base => |base| std.hash.autoHash(hasher, base.name),
+            .reference => |reference| hasher.update(reference.name),
+        }
+    }
+
+    pub fn eql(a: MapKeyType, b: MapKeyType) bool {
+        if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
+        return switch (a) {
+            .base => a.base.name == b.base.name,
+            .reference => std.mem.eql(u8, a.reference.name, b.reference.name),
+        };
+    }
+
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!@This() {
         const result = try std.json.innerParse(struct {
             kind: []const u8,
@@ -114,9 +136,9 @@ pub const MapKeyType = union(enum) {
         return error.UnexpectedToken;
     }
 
-    pub fn jsonStringify(self: @This(), options: std.json.StringifyOptions, out_stream: anytype) @TypeOf(out_stream.*).Error!void {
-        switch (self) {
-            inline else => |value| try std.json.stringify(value, options, out_stream),
+    pub fn jsonStringify(ty: MapKeyType, jw: *std.json.Stringify) std.json.Stringify.Error!void {
+        switch (ty) {
+            inline else => |value| try jw.write(value),
         }
     }
 };
@@ -191,6 +213,86 @@ pub const Type = union(TypeKind) {
     integerLiteral: IntegerLiteralType,
     booleanLiteral: BooleanLiteralType,
 
+    pub fn hash(ty: Type) u64 {
+        var hasher: std.hash.Wyhash = .init(0);
+        ty.hashWithHasher(&hasher);
+        return hasher.final();
+    }
+
+    pub fn hashWithHasher(ty: Type, hasher: anytype) void {
+        std.hash.autoHash(hasher, @as(TypeKind, ty));
+        switch (ty) {
+            .base => |base| std.hash.autoHash(hasher, base.name),
+            .reference => |reference| hasher.update(reference.name),
+            .array => |array| array.element.hashWithHasher(hasher),
+            .map => |map| {
+                map.key.hashWithHasher(hasher);
+                map.value.hashWithHasher(hasher);
+            },
+            inline .@"and", .@"or", .tuple => |payload| {
+                for (payload.items) |item| {
+                    item.hashWithHasher(hasher);
+                }
+                std.hash.autoHash(hasher, payload.items.len);
+            },
+            .literal => |literal| {
+                for (literal.value.properties) |property| {
+                    property.hashWithHasher(hasher);
+                }
+                std.hash.autoHash(hasher, literal.value.properties.len);
+
+                std.hash.autoHash(hasher, literal.value.documentation == null);
+                if (literal.value.documentation) |documentation| hasher.update(documentation);
+
+                std.hash.autoHash(hasher, literal.value.since == null);
+                if (literal.value.since) |since| hasher.update(since);
+
+                std.hash.autoHash(hasher, literal.value.proposed);
+
+                std.hash.autoHash(hasher, literal.value.deprecated == null);
+                if (literal.value.deprecated) |deprecated| hasher.update(deprecated);
+            },
+            .stringLiteral => |stringLiteral| hasher.update(stringLiteral.value),
+            .integerLiteral => |integerLiteral| std.hash.autoHash(hasher, @as(u64, @bitCast(integerLiteral.value))), // good enough :)
+            .booleanLiteral => |booleanLiteral| std.hash.autoHash(hasher, booleanLiteral.value),
+        }
+    }
+
+    pub fn eql(a: Type, b: Type) bool {
+        if (@as(TypeKind, a) != @as(TypeKind, b)) return false;
+        return switch (a) {
+            .base => a.base.name == b.base.name,
+            .reference => std.mem.eql(u8, a.reference.name, b.reference.name),
+            .array => std.mem.eql(u8, a.array.kind, b.array.kind) and eql(a.array.element.*, b.array.element.*),
+            .map => a.map.key.eql(b.map.key) and eql(a.map.value.*, b.map.value.*),
+            inline .@"and", .@"or", .tuple => |_, tag| {
+                const a_items = @field(a, @tagName(tag)).items;
+                const b_items = @field(b, @tagName(tag)).items;
+                if (a_items.len != b_items.len) return false;
+                for (a_items, b_items) |a_item, b_item| {
+                    if (!eql(a_item, b_item)) return false;
+                }
+                return true;
+            },
+            .literal => {
+                const a_properties = a.literal.value.properties;
+                const b_properties = b.literal.value.properties;
+                if (a_properties.len != b_properties.len) return false;
+                for (a_properties, b_properties) |a_property, b_property| {
+                    if (!a_property.eql(b_property)) return false;
+                }
+                // ignores documentation
+                // ignores since
+                // ignores proposed
+                // ignores deprecated
+                return true;
+            },
+            .stringLiteral => std.mem.eql(u8, a.stringLiteral.value, b.stringLiteral.value),
+            .integerLiteral => a.integerLiteral.value == b.integerLiteral.value,
+            .booleanLiteral => a.booleanLiteral.value == b.booleanLiteral.value,
+        };
+    }
+
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!@This() {
         const json_value = try std.json.innerParse(std.json.Value, allocator, source, options);
         return try jsonParseFromValue(allocator, json_value, options);
@@ -209,9 +311,9 @@ pub const Type = union(TypeKind) {
         return error.UnexpectedToken;
     }
 
-    pub fn jsonStringify(self: @This(), options: std.json.StringifyOptions, out_stream: anytype) @TypeOf(out_stream.*).Error!void {
-        switch (self) {
-            inline else => |value| try std.json.stringify(value, options, out_stream),
+    pub fn jsonStringify(ty: Type, jw: *std.json.Stringify) std.json.Stringify.Error!void {
+        switch (ty) {
+            inline else => |value| try jw.write(value),
         }
     }
 };
@@ -299,9 +401,9 @@ pub const Params = union(enum) {
         }
     }
 
-    pub fn jsonStringify(self: @This(), options: std.json.StringifyOptions, out_stream: anytype) @TypeOf(out_stream.*).Error!void {
-        switch (self) {
-            inline else => |value| try std.json.stringify(value, options, out_stream),
+    pub fn jsonStringify(params: Params, jw: *std.json.Stringify) std.json.Stringify.Error!void {
+        switch (params) {
+            inline else => |value| try jw.write(value),
         }
     }
 };
@@ -326,6 +428,40 @@ pub const Property = struct {
     /// Whether the property is deprecated or not. If deprecated
     /// the property contains the deprecation message.
     deprecated: ?[]const u8 = null,
+
+    pub fn hash(property: Property) u64 {
+        var hasher: std.hash.Wyhash = .init(0);
+        property.hashWithHasher(&hasher);
+        return hasher.final();
+    }
+
+    pub fn hashWithHasher(property: Property, hasher: anytype) void {
+        hasher.update(property.name);
+        property.type.hashWithHasher(hasher);
+        std.hash.autoHash(hasher, property.optional);
+
+        std.hash.autoHash(hasher, property.documentation == null);
+        if (property.documentation) |documentation| hasher.update(documentation);
+
+        std.hash.autoHash(hasher, property.since == null);
+        if (property.since) |since| hasher.update(since);
+
+        std.hash.autoHash(hasher, property.proposed);
+
+        std.hash.autoHash(hasher, property.deprecated == null);
+        if (property.deprecated) |deprecated| hasher.update(deprecated);
+    }
+
+    pub fn eql(a: Property, b: Property) bool {
+        if (!std.mem.eql(u8, a.name, b.name)) return false;
+        if (!a.type.eql(b.type)) return false;
+        if (a.optional != b.optional) return false;
+        // ignores documentation
+        // ignores since
+        // ignores proposed
+        // ignores deprecated
+        return true;
+    }
 };
 
 /// Defines the structure of an object literal.
@@ -430,10 +566,10 @@ pub const EnumerationEntry = struct {
             }
         }
 
-        pub fn jsonStringify(self: @This(), options: std.json.StringifyOptions, out_stream: anytype) @TypeOf(out_stream.*).Error!void {
-            switch (self) {
-                .number => |f| try std.json.stringify(f, options, out_stream),
-                .string => |s| try std.json.stringify(s, options, out_stream),
+        pub fn jsonStringify(value: Value, jw: *std.json.Stringify) std.json.Stringify.Error!void {
+            switch (value) {
+                .number => |f| try jw.write(f),
+                .string => |s| try jw.write(s),
             }
         }
     };

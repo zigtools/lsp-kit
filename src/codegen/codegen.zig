@@ -18,7 +18,7 @@ pub fn main() !void {
     const parsed_meta_model = try std.json.parseFromSlice(MetaModel, gpa, @embedFile("meta-model"), .{});
     defer parsed_meta_model.deinit();
 
-    const source = try renderMetaModel(gpa, parsed_meta_model.value);
+    const source = try renderMetaModel(gpa, &parsed_meta_model.value);
     defer gpa.free(source);
 
     var zig_tree: std.zig.Ast = try .parse(gpa, source, .zig);
@@ -94,7 +94,7 @@ fn messageDirectionName(message_direction: MetaModel.MessageDirection) []const u
     };
 }
 
-fn guessFieldName(meta_model: MetaModel, writer: *std.Io.Writer, typ: MetaModel.Type, i: usize) std.Io.Writer.Error!void {
+fn guessFieldName(meta_model: *const MetaModel, writer: *std.Io.Writer, typ: MetaModel.Type, i: usize) std.Io.Writer.Error!void {
     switch (typ) {
         .base => |base| switch (base.name) {
             .URI => try writer.writeAll("uri"),
@@ -236,7 +236,7 @@ const SymbolTree = struct {
             current_node = gop.value_ptr;
         }
         const node = current_node.?;
-        std.debug.assert(node.symbol == .namespace); // symbol collision
+        if (node.symbol != .namespace) std.debug.panic("symbol collision: {s}", .{name[0 .. name_it.index orelse name.len]});
         node.symbol = symbol;
     }
 
@@ -310,7 +310,7 @@ const Renderer = struct {
 
                 try r.w.print("pub const {f} = struct {{\n", .{std.zig.fmtId(name)});
                 try r.renderProperties(structure, null);
-                try r.w.writeAll("\n\n");
+                if (node.children.count() != 0) try r.w.writeAll("\n\n");
                 for (node.children.keys(), node.children.values()) |child_name, *child_node| {
                     try r.renderNode(child_node, child_name);
                 }
@@ -353,7 +353,7 @@ const Renderer = struct {
                     .integer, .uinteger => try r.w.print("/// {s}\n_,", .{docs}),
                 }
 
-                try r.w.writeAll("\n\n");
+                if (node.children.count() != 0) try r.w.writeAll("\n\n");
                 for (node.children.keys(), node.children.values()) |child_name, *child_node| {
                     try r.renderNode(child_node, child_name);
                 }
@@ -468,7 +468,6 @@ const Renderer = struct {
             if (!r.isRenderingName(new_name)) {
                 std.debug.assert(children.count() == 0);
                 try r.renderNamespacedName(new_name);
-                // try r.w.writeAll(new_name);
                 return;
             } else {
                 // Don't replace when rendering the symbol itself.
@@ -512,7 +511,7 @@ const Renderer = struct {
                 for (andt.items) |item| {
                     if (item != .reference) @panic("Unimplemented and subject encountered!");
                     try r.w.print("// And {s}\n", .{item.reference.name});
-                    try r.renderReferenceInline(item.reference, null);
+                    try r.renderProperties(lookupStructure(r.meta_model, item.reference.name), null);
                     try r.w.writeAll("\n\n");
                 }
                 for (children.keys(), children.values()) |child_name, *child_node| {
@@ -530,6 +529,7 @@ const Renderer = struct {
                     for (ort.items) |sub_type| {
                         try r.w.print("{s},\n", .{sub_type.stringLiteral.value});
                     }
+                    if (children.count() != 0) try r.w.writeAll("\n\n");
                     for (children.keys(), children.values()) |child_name, *child_node| {
                         try r.renderNode(child_node, child_name);
                     }
@@ -545,15 +545,16 @@ const Renderer = struct {
                     // TODO consider flattening nested or types (e.g `Definition.Result`)
                     try r.w.writeAll("union(enum) {\n");
                     for (ort.items, 0..) |sub_type, i| {
-                        try guessFieldName(r.meta_model.*, r.w, sub_type, i);
+                        try guessFieldName(r.meta_model, r.w, sub_type, i);
                         try r.w.writeAll(": ");
                         try r.renderType(sub_type, .empty);
                         try r.w.writeAll(",\n");
                     }
-                    try r.w.writeAll("\n\n");
+                    if (children.count() != 0) try r.w.writeAll("\n\n");
                     for (children.keys(), children.values()) |child_name, *child_node| {
                         try r.renderNode(child_node, child_name);
                     }
+                    try r.w.writeAll("\n\n");
                     try r.w.writeAll(
                         \\pub const jsonParse = parser.UnionParser(@This()).jsonParse;
                         \\pub const jsonParseFromValue = parser.UnionParser(@This()).jsonParseFromValue;
@@ -634,28 +635,16 @@ const Renderer = struct {
         for (extends) |ext| {
             if (ext != .reference) @panic("Expected reference for extends!");
             try r.w.print("// Extends `{s}`\n", .{ext.reference.name});
-            try r.renderReferenceInline(ext.reference, structure);
+            try r.renderProperties(lookupStructure(r.meta_model, ext.reference.name), structure);
             try r.w.writeByte('\n');
         }
 
         for (mixins) |ext| {
             if (ext != .reference) @panic("Expected reference for mixin!");
             try r.w.print("// Uses mixin `{s}`\n", .{ext.reference.name});
-            try r.renderReferenceInline(ext.reference, structure);
+            try r.renderProperties(lookupStructure(r.meta_model, ext.reference.name), structure);
             try r.w.writeByte('\n');
         }
-    }
-
-    fn renderReferenceInline(
-        r: *Renderer,
-        reference: MetaModel.ReferenceType,
-        maybe_extender: ?MetaModel.Structure,
-    ) error{WriteFailed}!void {
-        const structure = for (r.meta_model.structures) |s| {
-            if (std.mem.eql(u8, s.name, reference.name)) break s;
-        } else std.debug.panic("could not resolve reference to '{s}'", .{reference.name});
-
-        try r.renderProperties(structure, maybe_extender);
     }
 
     const FormatType = struct {
@@ -695,7 +684,7 @@ const Renderer = struct {
             std.json.fmt(request.method, .{}),
             if (request.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
             messageDirectionName(request.messageDirection),
-            // NOTE: Multiparams not used here, so we dont have to implement them :)
+            // Multiparams not used here, so we dont have to implement them :)
             if (request.params) |params| FormatType{ .r = r, .ty = params.Type } else null,
             FormatType{ .r = r, .ty = request.result },
             if (request.partialResult) |ty| FormatType{ .r = r, .ty = ty } else null,
@@ -725,7 +714,7 @@ const Renderer = struct {
             std.json.fmt(notification.method, .{}),
             if (notification.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
             messageDirectionName(notification.messageDirection),
-            // NOTE: Multiparams not used here, so we dont have to implement them :)
+            // Multiparams not used here, so we dont have to implement them :)
             if (notification.params) |params| FormatType{ .r = r, .ty = params.Type } else null,
             if (notification.registrationMethod) |method| std.json.fmt(method, .{}) else null,
             if (notification.registrationOptions) |ty| FormatType{ .r = r, .ty = ty } else null,
@@ -801,7 +790,7 @@ test SymbolNamespaceIterator {
     try std.testing.expect(it.next() == null);
 }
 
-fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: MetaModel) error{OutOfMemory}!SymbolTree {
+fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: *const MetaModel) error{OutOfMemory}!SymbolTree {
     var symbols: std.StringArrayHashMapUnmanaged(Symbol) = .empty;
     defer symbols.deinit(gpa);
 
@@ -839,34 +828,39 @@ fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: MetaModel) error{OutO
 
     for (config.rename_symbols) |rename| {
         const original_name, const new_name = rename;
-        const kv = symbols.fetchSwapRemove(original_name).?; // invalid symbol in `rename_symbols`
+        const kv = symbols.fetchSwapRemove(original_name) orelse
+            std.debug.panic("invalid symbol '{s}' in @import(\"config.zig\").rename_symbols", .{original_name});
         try symbol_tree.insert(gpa, new_name, kv.value);
     }
     if (symbols.count() > 0) {
-        std.debug.panic("The LSP type '{s}' is missing in @import(\"config.zig\").renames", .{symbols.keys()[0]});
+        for (symbols.keys()) |missing| {
+            std.log.err("The LSP type '{s}' is missing in @import(\"config.zig\").rename_symbols", .{missing});
+        }
+        std.process.exit(1);
     }
 
     return symbol_tree;
 }
 
-fn lookupProperty(name: []const u8, meta_model: MetaModel) MetaModel.Property {
+fn lookupStructure(meta_model: *const MetaModel, name: []const u8) MetaModel.Structure {
+    for (meta_model.structures) |s| {
+        if (std.mem.eql(u8, s.name, name)) return s;
+    }
+    std.debug.panic("could not resolve reference to '{s}'", .{name});
+}
+
+fn lookupProperty(name: []const u8, meta_model: *const MetaModel) MetaModel.Property {
     var name_it: SymbolNamespaceIterator = .init(name, .forward);
     const structure_name = name_it.next().?;
-
-    const structure: MetaModel.Structure = for (meta_model.structures) |structure| {
-        if (std.mem.eql(u8, structure.name, structure_name)) break structure;
-    } else std.debug.panic("could not find meta model structure '{s}'", .{structure_name});
-
     const first_property_name = name_it.next().?;
 
+    const structure = lookupStructure(meta_model, structure_name);
     var result: MetaModel.Property = property: {
         for (structure.properties) |property| {
             if (std.mem.eql(u8, property.name, first_property_name)) break :property property;
         }
         for (structure.extends orelse &.{}) |ty| {
-            const s = for (meta_model.structures) |s| {
-                if (std.mem.eql(u8, s.name, ty.reference.name)) break s;
-            } else std.debug.panic("could not resolve reference to '{s}'", .{ty.reference.name});
+            const s = lookupStructure(meta_model, ty.reference.name);
             for (s.properties) |property| {
                 if (std.mem.eql(u8, property.name, first_property_name)) break :property property;
             }
@@ -888,7 +882,7 @@ fn lookupProperty(name: []const u8, meta_model: MetaModel) MetaModel.Property {
     return result;
 }
 
-fn renderMetaModel(gpa: std.mem.Allocator, meta_model: MetaModel) error{ OutOfMemory, WriteFailed }![:0]u8 {
+fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *const MetaModel) error{ OutOfMemory, WriteFailed }![:0]u8 {
     var symbol_tree = try constructSymbolTree(gpa, meta_model);
     defer symbol_tree.deinit(gpa);
 
@@ -913,13 +907,13 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: MetaModel) error{ OutOfMe
 
         try symbolization_table.ensureUnusedCapacity(gpa, 2 * request_result_names.kvs.len);
         for (meta_model.requests) |request| {
-            const distinct_result_type = findInnerDistinctType(request.result, &meta_model) orelse continue;
+            const distinct_result_type = findInnerDistinctType(request.result, meta_model) orelse continue;
             const result_name, const partial_result_name = request_result_names.get(request.method) orelse std.debug.panic("missing namespace name for '{s}'", .{request.method});
 
             try symbol_tree.insert(gpa, result_name, .{ .decl = .{ .type = distinct_result_type } });
             symbolization_table.putAssumeCapacity(distinct_result_type, result_name); // clobber?
 
-            const distinct_partial_result_type = findInnerDistinctType(request.partialResult orelse continue, &meta_model) orelse continue;
+            const distinct_partial_result_type = findInnerDistinctType(request.partialResult orelse continue, meta_model) orelse continue;
             if (!distinct_partial_result_type.eql(distinct_result_type)) {
                 try symbol_tree.insert(gpa, partial_result_name, .{ .decl = .{ .type = distinct_partial_result_type } });
                 symbolization_table.putAssumeCapacity(distinct_partial_result_type, partial_result_name); // clobber?
@@ -930,7 +924,7 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: MetaModel) error{ OutOfMe
     var scope_stack: [8]Renderer.Scope = undefined;
     var renderer: Renderer = .{
         .scope_stack = .initBuffer(&scope_stack),
-        .meta_model = &meta_model,
+        .meta_model = meta_model,
         .w = &aw.writer,
         .symbolization_table = symbolization_table,
     };

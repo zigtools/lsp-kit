@@ -240,17 +240,10 @@ pub const Type = union(TypeKind) {
                     property.hashWithHasher(hasher);
                 }
                 std.hash.autoHash(hasher, literal.value.properties.len);
-
-                std.hash.autoHash(hasher, literal.value.documentation == null);
-                if (literal.value.documentation) |documentation| hasher.update(documentation);
-
-                std.hash.autoHash(hasher, literal.value.since == null);
-                if (literal.value.since) |since| hasher.update(since);
-
-                std.hash.autoHash(hasher, literal.value.proposed);
-
-                std.hash.autoHash(hasher, literal.value.deprecated == null);
-                if (literal.value.deprecated) |deprecated| hasher.update(deprecated);
+                // ignores documentation
+                // ignores since
+                // ignores proposed
+                // ignores deprecated
             },
             .stringLiteral => |stringLiteral| hasher.update(stringLiteral.value),
             .integerLiteral => |integerLiteral| std.hash.autoHash(hasher, @as(u64, @bitCast(integerLiteral.value))), // good enough :)
@@ -447,17 +440,10 @@ pub const Property = struct {
         hasher.update(property.name);
         property.type.hashWithHasher(hasher);
         std.hash.autoHash(hasher, property.optional);
-
-        std.hash.autoHash(hasher, property.documentation == null);
-        if (property.documentation) |documentation| hasher.update(documentation);
-
-        std.hash.autoHash(hasher, property.since == null);
-        if (property.since) |since| hasher.update(since);
-
-        std.hash.autoHash(hasher, property.proposed);
-
-        std.hash.autoHash(hasher, property.deprecated == null);
-        if (property.deprecated) |deprecated| hasher.update(deprecated);
+        // ignores documentation
+        // ignores since
+        // ignores proposed
+        // ignores deprecated
     }
 
     pub fn eql(a: Property, b: Property) bool {

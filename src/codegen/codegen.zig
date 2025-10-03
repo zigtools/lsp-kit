@@ -325,20 +325,15 @@ const Renderer = struct {
                 if (enumeration.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
                 try r.w.print("pub const {f} = {s} {{\n", .{ std.zig.fmtId(name), container_kind });
 
-                // WORKAROUND: the enumeration value `pascal` appears twice in LanguageKind
-                var found_pascal = false;
-
                 var contains_empty_enum = false;
                 for (enumeration.values) |entry| {
                     if (entry.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
                     switch (entry.value) {
                         .string => |value| {
-                            if (std.mem.eql(u8, value, "pascal")) {
-                                if (found_pascal) continue;
-                                found_pascal = true;
-                            }
+                            var value_name = if (value.len == 0) "empty" else value;
                             if (value.len == 0) contains_empty_enum = true;
-                            const value_name = if (value.len == 0) "empty" else value;
+                            // WORKAROUND: the enumeration value `pascal` appears twice in LanguageKind
+                            if (std.mem.eql(u8, entry.name, "Delphi")) value_name = "delphi";
                             try r.w.print("{f},\n", .{std.zig.fmtIdP(value_name)});
                         },
                         .number => |value| try r.w.print("{f} = {d},\n", .{ std.zig.fmtIdP(entry.name), value }),

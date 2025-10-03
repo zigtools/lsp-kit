@@ -993,7 +993,7 @@ var request_result_names: std.StaticStringMap([2][]const u8) = .initComptime(&.{
     .{ "textDocument/implementation",            .{ "implementation.Result",            "implementation.PartialResult" }            },
     .{ "textDocument/typeDefinition",            .{ "type_definition.Result",           "type_definition.PartialResult" }           },
     .{ "textDocument/declaration",               .{ "Declaration.Result",               "Declaration.PartialResult" }               },
-    .{ "textDocument/semanticTokens/full/delta", .{ "SemanticTokens.full_delta.Result", "SemanticTokens.full_delta.PartialResult" } },
+    .{ "textDocument/semanticTokens/full/delta", .{ "semantic_tokens.Result.FullDelta", "semantic_tokens.Result.FullDelta.Partial"} },
     .{ "textDocument/inlineCompletion",          .{ "inline_completion.Result",         "inline_completion.PartialResult" }         },
     .{ "textDocument/completion",                .{ "completion.Result",                "completion.PartialResult" }                },
     .{ "textDocument/definition",                .{ "Definition.Result",                "Definition.PartialResult" }                },

@@ -594,7 +594,7 @@ const Renderer = struct {
 
         try r.w.print("{f}", .{std.zig.fmtIdPU(property.name)});
         try r.w.writeAll(": ");
-        try r.w.writeAll(if (is_selection_range) "?*" else if (is_undefinedable and !is_nullable) "?" else "");
+        try r.w.writeAll(if (is_selection_range) "?*const " else if (is_undefinedable and !is_nullable) "?" else "");
         try r.renderType(property.type, .empty);
         if (is_nullable or is_undefinedable) try r.w.writeAll(" = null");
         try r.w.writeByte(',');

@@ -187,7 +187,8 @@ fn findInnerDistinctType(ty: MetaModel.Type, meta_model: *const MetaModel) ?Meta
 }
 
 const Symbol = union(enum) {
-    namespace,
+    /// Also functions as a namespace.
+    placeholder,
     decl: struct {
         type: MetaModel.Type,
         documentation: ?[]const u8 = null,
@@ -232,11 +233,28 @@ const SymbolTree = struct {
         var current_node: ?*Node = null;
         while (name_it.next()) |name_component| {
             const children = if (current_node) |node| &node.children else &tree.root;
-            const gop = try children.getOrPutValue(gpa, name_component, .{ .symbol = .namespace });
+            const gop = try children.getOrPutValue(gpa, name_component, .{ .symbol = .placeholder });
             current_node = gop.value_ptr;
         }
         const node = current_node.?;
-        if (node.symbol != .namespace) std.debug.panic("symbol collision: {s}", .{name[0 .. name_it.index orelse name.len]});
+        if (node.symbol != .placeholder) std.debug.panic("symbol collision: {s}", .{name[0 .. name_it.index orelse name.len]});
+        node.symbol = symbol;
+    }
+
+    /// Asserts that a `.placeholder` symbol has already been inserted with the same name.
+    fn insertIntoPlaceholder(
+        tree: *SymbolTree,
+        name: []const u8,
+        symbol: Symbol,
+    ) void {
+        var name_it = std.mem.splitScalar(u8, name, '.');
+        var current_node: ?*Node = null;
+        while (name_it.next()) |name_component| {
+            const children = if (current_node) |node| &node.children else &tree.root;
+            current_node = children.getPtr(name_component) orelse std.debug.panic("could not find placeholder symbol: {s}", .{name});
+        }
+        const node = current_node.?;
+        if (node.symbol != .placeholder) std.debug.panic("symbol collision: {s}", .{name[0 .. name_it.index orelse name.len]});
         node.symbol = symbol;
     }
 
@@ -292,7 +310,7 @@ const Renderer = struct {
         defer r.scope_stack.items.len -= 1;
 
         switch (node.symbol) {
-            .namespace => {
+            .placeholder => {
                 try r.w.print("pub const {f} = struct {{\n", .{std.zig.fmtId(name)});
                 for (node.children.keys(), node.children.values()) |child_name, *child_node| {
                     try r.renderNode(child_node, child_name);
@@ -384,6 +402,7 @@ const Renderer = struct {
         }
 
         switch (symbol_map.get(reference_name).?) {
+            .placeholder => unreachable,
             .remove => try r.w.writeAll(reference_name), // keep the old name
             .rename => |namespaced_name| {
                 if (config.disable_renaming) {
@@ -816,6 +835,7 @@ fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: *const MetaModel) err
     for (config.symbols) |item| {
         const name, const action = item;
         switch (action) {
+            .placeholder => try symbol_tree.insert(gpa, name, .placeholder),
             .remove => {
                 if (!symbols.swapRemove(name)) {
                     std.debug.panic("invalid symbol '{s}' in @import(\"config.zig\").symbols", .{name});
@@ -896,7 +916,7 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *const MetaModel) error{ 
             const property_name, const new_name = symbolize;
             const property = lookupProperty(property_name, meta_model);
             std.debug.assert((property.optional orelse false) == false); // symbolizing an optional property is unsupported
-            try symbol_tree.insert(gpa, new_name, .{ .decl = .{
+            symbol_tree.insertIntoPlaceholder(new_name, .{ .decl = .{
                 .type = property.type,
                 .documentation = property.documentation,
             } });
@@ -908,12 +928,12 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *const MetaModel) error{ 
             const distinct_result_type = findInnerDistinctType(request.result, meta_model) orelse continue;
             const result_name, const partial_result_name = request_result_names.get(request.method) orelse std.debug.panic("missing namespace name for '{s}'", .{request.method});
 
-            try symbol_tree.insert(gpa, result_name, .{ .decl = .{ .type = distinct_result_type } });
+            symbol_tree.insertIntoPlaceholder(result_name, .{ .decl = .{ .type = distinct_result_type } });
             symbolization_table.putAssumeCapacity(distinct_result_type, result_name); // clobber?
 
             const distinct_partial_result_type = findInnerDistinctType(request.partialResult orelse continue, meta_model) orelse continue;
             if (!distinct_partial_result_type.eql(distinct_result_type)) {
-                try symbol_tree.insert(gpa, partial_result_name, .{ .decl = .{ .type = distinct_partial_result_type } });
+                symbol_tree.insertIntoPlaceholder(partial_result_name, .{ .decl = .{ .type = distinct_partial_result_type } });
                 symbolization_table.putAssumeCapacity(distinct_partial_result_type, partial_result_name); // clobber?
             }
         }
@@ -959,6 +979,7 @@ const Config = struct {
     symbolize: []const struct { []const u8, []const u8 },
 
     const Action = union(enum) {
+        placeholder,
         remove,
         rename: []const u8,
     };

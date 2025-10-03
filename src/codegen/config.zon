@@ -37,6 +37,8 @@
         .{"LSPErrorCodes",                              .{ .rename = "LSPErrorCodes" } },
         .{"LocationUriOnly",                            .{ .rename = "LocationUriOnly" } },
 
+        .{"Documentation",                              .placeholder},
+
         // TODO
         .{"FormattingOptions",                          .{ .rename = "FormattingOptions" } },
         .{"InitializedParams",                          .{ .rename = "InitializedParams" } },
@@ -51,8 +53,6 @@
         .{"SymbolInformation",                          .{ .rename = "SymbolInformation" } },
         .{"SymbolKind",                                 .{ .rename = "SymbolKind" } },
         .{"SymbolTag",                                  .{ .rename = "SymbolTag" } },
-        .{"ServerCapabilities",                         .{ .rename = "ServerCapabilities" } },
-        .{"WorkspaceOptions",                           .{ .rename = "ServerCapabilities.WorkspaceOptions" } },
         .{"ServerInfo",                                 .{ .rename = "ServerInfo" } },
         .{"ClientInfo",                                 .{ .rename = "ClientInfo" } },
         .{"PartialResultParams",                        .{ .rename = "PartialResultParams" } },
@@ -207,6 +207,38 @@
         .{"RegularExpressionEngineKind",                .{ .rename = "ClientCapabilities.General.RegularExpressions.EngineKind" } },
         .{"MarkdownClientCapabilities",                 .{ .rename = "ClientCapabilities.General.Markdown" } },
 
+        // server capabilities
+        .{"ServerCapabilities",                                      .{ .rename = "ServerCapabilities" } },
+        .{"ServerCapabilities.TextDocumentSync",                     .placeholder },
+        .{"ServerCapabilities.NotebookDocumentSync",                 .placeholder },
+        .{"ServerCapabilities.HoverOptions",                         .placeholder },
+        .{"ServerCapabilities.DeclarationOptions",                   .placeholder },
+        .{"ServerCapabilities.DefinitionOptions",                    .placeholder },
+        .{"ServerCapabilities.TypeDefinitionOptions",                .placeholder },
+        .{"ServerCapabilities.ImplementationOptions",                .placeholder },
+        .{"ServerCapabilities.ReferencesOptions",                    .placeholder },
+        .{"ServerCapabilities.DocumentHighlightOptions",             .placeholder },
+        .{"ServerCapabilities.DocumentSymbolOptions",                .placeholder },
+        .{"ServerCapabilities.CodeActionOptions",                    .placeholder },
+        .{"ServerCapabilities.ColorOptions",                         .placeholder },
+        .{"ServerCapabilities.WorkspaceSymbolOptions",               .placeholder },
+        .{"ServerCapabilities.DocumentFormattingOptions",            .placeholder },
+        .{"ServerCapabilities.DocumentRangeFormattingOptions",       .placeholder },
+        .{"ServerCapabilities.DocumentOnTypeFormattingOptions",      .placeholder },
+        .{"ServerCapabilities.RenameOptions",                        .placeholder },
+        .{"ServerCapabilities.FoldingRangeOptions",                  .placeholder },
+        .{"ServerCapabilities.SelectionRangeOptions",                .placeholder },
+        .{"ServerCapabilities.CallHierarchyOptions",                 .placeholder },
+        .{"ServerCapabilities.LinkedEditingRangeOptions",            .placeholder },
+        .{"ServerCapabilities.SemanticTokensOptions",                .placeholder },
+        .{"ServerCapabilities.MonikerOptions",                       .placeholder },
+        .{"ServerCapabilities.TypeHierarchyOptions",                 .placeholder },
+        .{"ServerCapabilities.InlineValueOptions",                   .placeholder },
+        .{"ServerCapabilities.InlayHintOptions",                     .placeholder },
+        .{"ServerCapabilities.DiagnosticOptions",                    .placeholder },
+        .{"ServerCapabilities.InlineCompletionOptions",              .placeholder },
+        .{"WorkspaceOptions",                                        .{ .rename = "ServerCapabilities.WorkspaceOptions" } },
+
         // textDocument/prepareRename
         .{"PrepareRenameParams",                        .{ .rename = "prepare_rename.Params" } },
         .{"PrepareRenameResult",                        .{ .rename = "prepare_rename.Result" } },
@@ -236,6 +268,7 @@
         .{"CodeActionKind",                             .{ .rename = "CodeAction.Kind" } },
         .{"CodeActionOptions",                          .{ .rename = "CodeAction.Options" } },
         .{"CodeActionParams",                           .{ .rename = "CodeAction.Params" } },
+        .{"CodeAction.Result",                          .placeholder },
         .{"CodeActionRegistrationOptions",              .{ .rename = "CodeAction.RegistrationOptions" } },
         .{"CodeActionTriggerKind",                      .{ .rename = "CodeAction.TriggerKind" } },
         .{"CodeActionDisabled",                         .{ .rename = "CodeAction.Disabled" } },
@@ -250,6 +283,7 @@
 
         .{"CompletionContext",                          .{ .rename = "completion.Context" } },
         .{"CompletionItem",                             .{ .rename = "completion.Item" } },
+        .{"completion.Item.TextEdit",                   .placeholder },
         .{"InsertReplaceEdit",                          .{ .rename = "completion.Item.InsertReplaceEdit" } },
         .{"CompletionItemKind",                         .{ .rename = "completion.Item.Kind" } },
         .{"CompletionItemLabelDetails",                 .{ .rename = "completion.Item.LabelDetails" } },
@@ -258,27 +292,36 @@
         .{"CompletionOptions",                          .{ .rename = "completion.Options" } },
         .{"ServerCompletionItemOptions",                .{ .rename = "completion.Options.ItemOptions" } },
         .{"CompletionParams",                           .{ .rename = "completion.Params" } },
+        .{"completion.Result",                          .placeholder },
         .{"CompletionRegistrationOptions",              .{ .rename = "completion.RegistrationOptions" } },
         .{"CompletionTriggerKind",                      .{ .rename = "completion.TriggerKind" } },
 
         .{"Declaration",                                .{ .rename = "Declaration" } },
-        .{"DeclarationLink",                            .{ .rename = "Declaration.Link" } },
+        .{"DeclarationLink",                            .{ .rename = "Declaration.Link" } }, // TODO replace with Definition.Link
         .{"DeclarationOptions",                         .{ .rename = "Declaration.Options" } },
         .{"DeclarationParams",                          .{ .rename = "Declaration.Params" } },
+        .{"Declaration.Result",                         .placeholder }, // TODO replace with Definition.Result
+        .{"Declaration.PartialResult",                  .placeholder }, // TODO replace with Definition.PartialResult
         .{"DeclarationRegistrationOptions",             .{ .rename = "Declaration.RegistrationOptions" } },
 
         .{"Definition",                                 .{ .rename = "Definition" } },
         .{"DefinitionLink",                             .{ .rename = "Definition.Link" } },
         .{"DefinitionOptions",                          .{ .rename = "Definition.Options" } },
         .{"DefinitionParams",                           .{ .rename = "Definition.Params" } },
+        .{"Definition.Result",                          .placeholder },
+        .{"Definition.PartialResult",                   .placeholder },
         .{"DefinitionRegistrationOptions",              .{ .rename = "Definition.RegistrationOptions" } },
 
         .{"ImplementationOptions",                      .{ .rename = "implementation.Options" } },
         .{"ImplementationParams",                       .{ .rename = "implementation.Params" } },
+        .{"implementation.Result",                      .placeholder },
+        .{"implementation.PartialResult",               .placeholder },
         .{"ImplementationRegistrationOptions",          .{ .rename = "implementation.RegistrationOptions" } },
 
         .{"TypeDefinitionOptions",                      .{ .rename = "type_definition.Options" } },
         .{"TypeDefinitionParams",                       .{ .rename = "type_definition.Params" } },
+        .{"type_definition.Result",                     .placeholder },
+        .{"type_definition.PartialResult",              .placeholder },
         .{"TypeDefinitionRegistrationOptions",          .{ .rename = "type_definition.RegistrationOptions" } },
 
         .{"Diagnostic",                                 .{ .rename = "Diagnostic" } },
@@ -339,6 +382,7 @@
         .{"DocumentSymbol",                             .{ .rename = "DocumentSymbol" } },
         .{"DocumentSymbolOptions",                      .{ .rename = "DocumentSymbol.Options" } },
         .{"DocumentSymbolParams",                       .{ .rename = "DocumentSymbol.Params" } },
+        .{"DocumentSymbol.Result",                      .placeholder },
         .{"DocumentSymbolRegistrationOptions",          .{ .rename = "DocumentSymbol.RegistrationOptions" } },
 
         .{"FoldingRange",                               .{ .rename = "FoldingRange" } },
@@ -348,6 +392,7 @@
         .{"FoldingRangeRegistrationOptions",            .{ .rename = "FoldingRange.RegistrationOptions" } },
 
         .{"Hover",                                      .{ .rename = "Hover" } },
+        .{"Hover.Contents",                             .placeholder },
         .{"MarkedString",                               .{ .rename = "Hover.MarkedString" } },
         .{"MarkedStringWithLanguage",                   .{ .rename = "Hover.MarkedString.WithLanguage" } },
         .{"HoverOptions",                               .{ .rename = "Hover.Options" } },
@@ -355,6 +400,7 @@
         .{"HoverRegistrationOptions",                   .{ .rename = "Hover.RegistrationOptions" } },
 
         .{"InlayHint",                                  .{ .rename = "InlayHint" } },
+        .{"InlayHint.Label",                            .placeholder },
         .{"InlayHintKind",                              .{ .rename = "InlayHint.Kind" } },
         .{"InlayHintLabelPart",                         .{ .rename = "InlayHint.LabelPart" } },
         .{"InlayHintOptions",                           .{ .rename = "InlayHint.Options" } },
@@ -365,9 +411,11 @@
         .{"InlineCompletionTriggerKind",                .{ .rename = "inline_completion.Context.TriggerKind" } },
         .{"SelectedCompletionInfo",                     .{ .rename = "inline_completion.Context.SelectedCompletionInfo" } }, // TODO
         .{"InlineCompletionItem",                       .{ .rename = "inline_completion.Item" } },
+        .{"inline_completion.Item.InsertText",          .placeholder },
         .{"InlineCompletionList",                       .{ .rename = "inline_completion.List" } },
         .{"InlineCompletionOptions",                    .{ .rename = "inline_completion.Options" } },
         .{"InlineCompletionParams",                     .{ .rename = "inline_completion.Params" } },
+        .{"inline_completion.Result",                   .placeholder },
         .{"InlineCompletionRegistrationOptions",        .{ .rename = "inline_completion.RegistrationOptions" } },
 
         .{"InlineValue",                                .{ .rename = "InlineValue" } },
@@ -412,9 +460,13 @@
         .{"SemanticTokensEdit",                         .{ .rename = "SemanticTokens.Edit" } },
         .{"SemanticTokensLegend",                       .{ .rename = "SemanticTokens.Legend" } },
         .{"SemanticTokensOptions",                      .{ .rename = "SemanticTokens.Options" } },
+        .{"SemanticTokens.Options.Range",               .placeholder },
+        .{"SemanticTokens.Options.Full",                .placeholder },
         .{"SemanticTokensFullDelta",                    .{ .rename = "SemanticTokens.Options.FullDelta" } },
         .{"SemanticTokensParams",                       .{ .rename = "SemanticTokens.Params" } },
         .{"SemanticTokensPartialResult",                .{ .rename = "SemanticTokens.PartialResult" } },
+        .{"SemanticTokens.full_delta.Result",           .placeholder },
+        .{"SemanticTokens.full_delta.PartialResult",    .placeholder },
         .{"SemanticTokensRangeParams",                  .{ .rename = "SemanticTokens.RangeParams" } },
         .{"SemanticTokensRegistrationOptions",          .{ .rename = "SemanticTokens.RegistrationOptions" } },
         .{"SemanticTokenTypes",                         .{ .rename = "SemanticTokens.Type" } },
@@ -427,6 +479,7 @@
         .{"SignatureHelpTriggerKind",                   .{ .rename = "SignatureHelp.TriggerKind" } },
         .{"SignatureInformation",                       .{ .rename = "SignatureHelp.Signature" } },
         .{"ParameterInformation",                       .{ .rename = "SignatureHelp.Signature.Parameter" } },
+        .{"SignatureHelp.Signature.Parameter.Label",    .placeholder },
 
         .{"TypeHierarchyItem",                          .{ .rename = "type_hierarchy.Item" } },
         .{"TypeHierarchyOptions",                       .{ .rename = "type_hierarchy.Options" } },
@@ -446,6 +499,7 @@
         .{"ClientSymbolResolveOptions",                 .{ .rename = "workspace.Symbol.ClientCapabilities.ResolveOptions" } },
         .{"WorkspaceSymbolOptions",                     .{ .rename = "workspace.Symbol.Options" } },
         .{"WorkspaceSymbolParams",                      .{ .rename = "workspace.Symbol.Params" } },
+        .{"workspace.Symbol.Result",                    .placeholder },
         .{"WorkspaceSymbolRegistrationOptions",         .{ .rename = "workspace.Symbol.RegistrationOptions" } },
 
         // workspace/configuration
@@ -553,12 +607,11 @@
         .{"WorkDoneProgressCreateParams",               .{ .rename = "window.work_done_progress.CreateParams" } },
         .{"WorkDoneProgressCancelParams",               .{ .rename = "window.work_done_progress.CancelParams" } },
     },
-    // TODO make it possible to control where the symbol should be placed
     .symbolize = .{
         .{ "CompletionItem.documentation.?",                        "Documentation" },
         .{ "SemanticTokensOptions.range.?",                         "SemanticTokens.Options.Range" },
         .{ "SemanticTokensOptions.full.?",                          "SemanticTokens.Options.Full" },
-        .{ "Diagnostic.code.?",                                     "Diagnostic.Code" },
+        // .{ "Diagnostic.code.?",                                     "Diagnostic.Code" },
         .{ "InlayHint.label",                                       "InlayHint.Label" },
         .{ "InlineCompletionItem.insertText",                       "inline_completion.Item.InsertText" },
         .{ "ParameterInformation.label",                            "SignatureHelp.Signature.Parameter.Label" },

@@ -383,13 +383,16 @@ const Renderer = struct {
             return;
         }
 
-        if (remove_set.has(reference_name)) {
-            // keep the old name
-            try r.w.writeAll(reference_name);
-            return;
+        switch (symbol_map.get(reference_name).?) {
+            .remove => try r.w.writeAll(reference_name), // keep the old name
+            .rename => |namespaced_name| {
+                if (config.disable_renaming) {
+                    try r.w.writeAll(reference_name);
+                } else {
+                    try r.renderNamespacedName(namespaced_name);
+                }
+            },
         }
-        const namespaced_name = rename_map.get(reference_name).?;
-        try r.renderNamespacedName(namespaced_name);
     }
 
     fn renderNamespacedName(r: *Renderer, namespaced_name: []const u8) error{WriteFailed}!void {
@@ -810,26 +813,26 @@ fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: *const MetaModel) err
     var symbol_tree: SymbolTree = .{};
     errdefer symbol_tree.deinit(gpa);
 
-    for (config.remove_symbols) |name| {
-        std.debug.assert(symbols.swapRemove(name)); // invalid symbol in `remove_symbols`
-    }
-
-    if (config.disable_renaming) {
-        for (symbols.keys(), symbols.values()) |name, symbol| {
-            try symbol_tree.insert(gpa, name, symbol);
+    for (config.symbols) |item| {
+        const name, const action = item;
+        switch (action) {
+            .remove => {
+                if (!symbols.swapRemove(name)) {
+                    std.debug.panic("invalid symbol '{s}' in @import(\"config.zig\").symbols", .{name});
+                }
+            },
+            .rename => |new_name| {
+                const kv = symbols.fetchSwapRemove(name) orelse
+                    std.debug.panic("invalid symbol '{s}' in @import(\"config.zig\").symbols", .{name});
+                const symbol_name = if (config.disable_renaming) name else new_name;
+                try symbol_tree.insert(gpa, symbol_name, kv.value);
+            },
         }
-        return symbol_tree;
     }
 
-    for (config.rename_symbols) |rename| {
-        const original_name, const new_name = rename;
-        const kv = symbols.fetchSwapRemove(original_name) orelse
-            std.debug.panic("invalid symbol '{s}' in @import(\"config.zig\").rename_symbols", .{original_name});
-        try symbol_tree.insert(gpa, new_name, kv.value);
-    }
     if (symbols.count() > 0) {
         for (symbols.keys()) |missing| {
-            std.log.err("The LSP type '{s}' is missing in @import(\"config.zig\").rename_symbols", .{missing});
+            std.log.err("The LSP type '{s}' is missing in @import(\"config.zig\").symbols", .{missing});
         }
         std.process.exit(1);
     }
@@ -952,18 +955,17 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *const MetaModel) error{ 
 const Config = struct {
     disable_renaming: bool,
     disable_symbolization: bool,
-    remove_symbols: []const []const u8,
-    rename_symbols: []const struct { []const u8, []const u8 },
+    symbols: []const struct { []const u8, Action },
     symbolize: []const struct { []const u8, []const u8 },
+
+    const Action = union(enum) {
+        remove,
+        rename: []const u8,
+    };
 };
 
 const config: Config = @import("config.zon");
-const remove_set: std.StaticStringMap(void) = .initComptime(blk: {
-    var kvs: [config.remove_symbols.len]struct { []const u8 } = undefined;
-    for (&kvs, config.remove_symbols) |*kv, name| kv.* = .{name};
-    break :blk kvs;
-});
-const rename_map: std.StaticStringMap([]const u8) = .initComptime(config.rename_symbols);
+const symbol_map: std.StaticStringMap(Config.Action) = .initComptime(config.symbols);
 
 // zig fmt: off
 var request_result_names: std.StaticStringMap([2][]const u8) = .initComptime(&.{

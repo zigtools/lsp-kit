@@ -1549,7 +1549,7 @@ pub fn bufPrintLogMessage(
     ///
     /// Must be at least `minimum_logging_buffer_size` bytes long.
     buffer: []u8,
-    message_type: types.MessageType,
+    message_type: types.window.MessageType,
     comptime fmt: []const u8,
     args: anytype,
 ) []u8 {
@@ -1567,7 +1567,7 @@ pub fn bufPrintLogMessage(
 
 fn bufPrintLogMessageTypeErased(
     buffer: []u8,
-    message_type: types.MessageType,
+    message_type: types.window.MessageType,
     format_fn: *const fn (*std.Io.Writer, opaque_params: *const anyopaque) std.Io.Writer.Error!void,
     opaque_params: *const anyopaque,
 ) []u8 {
@@ -2306,15 +2306,15 @@ pub fn Message(
 }
 
 const ExampleRequestMethods = union(enum) {
-    @"textDocument/implementation": types.ImplementationParams,
-    @"textDocument/completion": types.CompletionParams,
+    @"textDocument/implementation": types.implementation.Params,
+    @"textDocument/completion": types.completion.Params,
     shutdown,
     other: MethodWithParams,
 };
 
 const ExampleNotificationMethods = union(enum) {
     initialized: types.InitializedParams,
-    @"textDocument/didChange": types.DidChangeTextDocumentParams,
+    @"textDocument/didChange": types.TextDocument.DidChangeParams,
     exit,
     other: MethodWithParams,
 };
@@ -3025,8 +3025,8 @@ pub fn ParamsType(comptime method: []const u8) type {
 
 test ParamsType {
     comptime {
-        std.debug.assert(ParamsType("textDocument/hover") == types.HoverParams);
-        std.debug.assert(ParamsType("textDocument/inlayHint") == types.InlayHintParams);
+        std.debug.assert(ParamsType("textDocument/hover") == types.Hover.Params);
+        std.debug.assert(ParamsType("textDocument/inlayHint") == types.InlayHint.Params);
     }
 }
 

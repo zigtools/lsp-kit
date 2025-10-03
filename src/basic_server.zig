@@ -420,7 +420,7 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
                     if (b) .expected else .disabled,
                     .disabled,
                 },
-                .literal_1 => |full_options| .{
+                .semantic_tokens_full_delta => |full_options| .{
                     .expected,
                     if (full_options.delta orelse false) .expected else .disabled,
                 },

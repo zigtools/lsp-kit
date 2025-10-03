@@ -150,11 +150,11 @@ pub fn main() !void {
     try transport.writeNotification(
         gpa,
         "textDocument/didOpen", // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_didOpen
-        lsp.types.DidOpenTextDocumentParams,
+        lsp.types.TextDocument.DidOpenParams,
         .{
             .textDocument = .{
                 .uri = "untitled:Document", // Usually a file system uri will be provided like 'file:///path/to/main.zig'
-                .languageId = "",
+                .languageId = .{ .custom_value = "" },
                 .text = input_file,
                 .version = 0,
             },
@@ -168,7 +168,7 @@ pub fn main() !void {
         gpa,
         .{ .number = 1 },
         "textDocument/formatting", // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_formatting
-        lsp.types.DocumentFormattingParams,
+        lsp.types.document_formatting.Params,
         .{
             .textDocument = .{ .uri = "untitled:Document" },
             .options = .{ .tabSize = 4, .insertSpaces = true },

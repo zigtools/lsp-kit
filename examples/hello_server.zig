@@ -191,7 +191,7 @@ const RequestMethods = union(enum) {
     /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#shutdown
     shutdown,
     /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_formatting
-    @"textDocument/formatting": lsp.types.DocumentFormattingParams,
+    @"textDocument/formatting": lsp.types.document_formatting.Params,
     other: lsp.MethodWithParams,
 };
 
@@ -201,10 +201,10 @@ const NotificationMethods = union(enum) {
     /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#exit
     exit,
     /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_didOpen
-    @"textDocument/didOpen": lsp.types.DidOpenTextDocumentParams,
+    @"textDocument/didOpen": lsp.types.TextDocument.DidOpenParams,
     /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_didChange
-    @"textDocument/didChange": lsp.types.DidChangeTextDocumentParams,
+    @"textDocument/didChange": lsp.types.TextDocument.DidChangeParams,
     /// https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_didClose
-    @"textDocument/didClose": lsp.types.DidCloseTextDocumentParams,
+    @"textDocument/didClose": lsp.types.TextDocument.DidCloseParams,
     other: lsp.MethodWithParams,
 };

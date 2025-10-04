@@ -673,7 +673,7 @@ const Renderer = struct {
             if (request.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
             messageDirectionName(request.messageDirection),
             // Multiparams not used here, so we dont have to implement them :)
-            if (request.params) |params| FormatType{ .r = r, .ty = params.Type } else null,
+            if (request.params) |params| FormatType{ .r = r, .ty = params.one } else null,
             FormatType{ .r = r, .ty = request.result },
             if (request.partialResult) |ty| FormatType{ .r = r, .ty = ty } else null,
             if (request.errorData) |ty| FormatType{ .r = r, .ty = ty } else null,
@@ -703,7 +703,7 @@ const Renderer = struct {
             if (notification.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
             messageDirectionName(notification.messageDirection),
             // Multiparams not used here, so we dont have to implement them :)
-            if (notification.params) |params| FormatType{ .r = r, .ty = params.Type } else null,
+            if (notification.params) |params| FormatType{ .r = r, .ty = params.one } else null,
             if (notification.registrationMethod) |method| std.json.fmt(method, .{}) else null,
             if (notification.registrationOptions) |ty| FormatType{ .r = r, .ty = ty } else null,
         });
@@ -896,8 +896,8 @@ fn normalizeMetaModel(arena: std.mem.Allocator, meta_model: *MetaModel) error{Ou
     const onProperty = ctx.onProperty;
     for (meta_model.requests) |*request| {
         if (request.params) |*params| switch (params.*) {
-            .Type => |*ty| try onType(arena, ty),
-            .array_of_Type => |types| for (types) |*ty| try onType(arena, ty),
+            .one => |*ty| try onType(arena, ty),
+            .multiple => |types| for (types) |*ty| try onType(arena, ty),
         };
         try onType(arena, &request.result);
         if (request.partialResult) |*ty| try onType(arena, ty);
@@ -906,8 +906,8 @@ fn normalizeMetaModel(arena: std.mem.Allocator, meta_model: *MetaModel) error{Ou
     }
     for (meta_model.notifications) |*notification| {
         if (notification.params) |*params| switch (params.*) {
-            .Type => |*ty| try onType(arena, ty),
-            .array_of_Type => |types| for (types) |*ty| try onType(arena, ty),
+            .one => |*ty| try onType(arena, ty),
+            .multiple => |types| for (types) |*ty| try onType(arena, ty),
         };
         if (notification.registrationOptions) |*ty| try onType(arena, ty);
     }

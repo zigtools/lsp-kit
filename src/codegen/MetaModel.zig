@@ -384,21 +384,21 @@ pub const Notification = struct {
 };
 
 pub const Params = union(enum) {
-    Type: Type,
-    array_of_Type: []Type,
+    one: Type,
+    multiple: []Type,
 
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!@This() {
         switch (try source.peekNextTokenType()) {
-            .object_begin => return .{ .Type = try std.json.innerParse(Type, allocator, source, options) },
-            .array_begin => return .{ .array_of_Type = try std.json.innerParse([]Type, allocator, source, options) },
+            .object_begin => return .{ .one = try std.json.innerParse(Type, allocator, source, options) },
+            .array_begin => return .{ .multiple = try std.json.innerParse([]Type, allocator, source, options) },
             else => return error.UnexpectedToken,
         }
     }
 
     pub fn jsonParseFromValue(allocator: std.mem.Allocator, source: std.json.Value, options: std.json.ParseOptions) std.json.ParseFromValueError!@This() {
         switch (source) {
-            .object => return .{ .Type = try std.json.parseFromValueLeaky(Type, allocator, source, options) },
-            .array => return .{ .array_of_Type = try std.json.parseFromValueLeaky([]Type, allocator, source, options) },
+            .object => return .{ .one = try std.json.parseFromValueLeaky(Type, allocator, source, options) },
+            .array => return .{ .multiple = try std.json.parseFromValueLeaky([]Type, allocator, source, options) },
             else => return error.UnexpectedToken,
         }
     }

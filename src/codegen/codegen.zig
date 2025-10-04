@@ -15,7 +15,7 @@ pub fn main() !void {
     const out_file_path = try gpa.dupe(u8, arg_it.next() orelse std.process.fatal("second argument must be the output path to the generated zig code", .{}));
     defer gpa.free(out_file_path);
 
-    const parsed_meta_model = try std.json.parseFromSlice(MetaModel, gpa, @embedFile("meta-model"), .{});
+    var parsed_meta_model = try std.json.parseFromSlice(MetaModel, gpa, @embedFile("meta-model"), .{});
     defer parsed_meta_model.deinit();
 
     const source = try renderMetaModel(gpa, &parsed_meta_model.value);
@@ -150,31 +150,41 @@ fn isNullable(ty: MetaModel.Type) bool {
     return (or_ty.items.len == 2 and isNull(or_ty.items[1])) or isNull(or_ty.items[or_ty.items.len - 1]);
 }
 
+fn unwrapOptionalUnion(ty: MetaModel.Type) ?MetaModel.Type {
+    if (ty != .@"or") return null;
+    const or_ty = ty.@"or";
+    if (unwrapOptional(ty) != null) return null;
+    if (isEnum(ty)) return null;
+    if (!isNull(or_ty.items[or_ty.items.len - 1])) return null;
+    return .{ .@"or" = .{ .items = or_ty.items[0 .. or_ty.items.len - 1] } };
+}
+
+fn createOptional(arena: std.mem.Allocator, child_type: MetaModel.Type) error{OutOfMemory}!MetaModel.Type {
+    return .{ .@"or" = .{
+        .items = try arena.dupe(MetaModel.Type, &.{
+            child_type,
+            .{ .base = .{ .name = .null } },
+        }),
+    } };
+}
+
 /// Some LSP types will be rendered to a distinct Zig type (anonymous struct/container type).
-fn findInnerDistinctType(ty: MetaModel.Type, meta_model: *const MetaModel) ?MetaModel.Type {
-    return switch (ty) {
+fn findInnerDistinctType(ty: *MetaModel.Type, meta_model: *const MetaModel) ?*MetaModel.Type {
+    return switch (ty.*) {
         .base => null,
         .reference => null,
-        .array => |arr| findInnerDistinctType(arr.element.*, meta_model),
-        .map => |map| findInnerDistinctType(map.value.*, meta_model),
+        .array => |arr| findInnerDistinctType(arr.element, meta_model),
+        .map => |map| findInnerDistinctType(map.value, meta_model),
         .@"and" => ty,
         .@"or" => |or_ty| {
-            if (unwrapOptional(ty)) |child_type| {
-                return findInnerDistinctType(child_type, meta_model);
-            } else if (isEnum(ty)) {
-                return ty;
+            if (unwrapOptional(ty.*)) |_| {
+                return findInnerDistinctType(&or_ty.items[0], meta_model);
             } else {
-                // This would render to an (optional) tagged union
-                if (isNull(or_ty.items[or_ty.items.len - 1])) {
-                    // return ty;
-                    return .{ .@"or" = .{ .items = or_ty.items[0 .. or_ty.items.len - 1] } };
-                } else {
-                    return ty;
-                }
+                return ty;
             }
         },
         .tuple => |tup| {
-            for (tup.items) |sub_type| {
+            for (tup.items) |*sub_type| {
                 if (findInnerDistinctType(sub_type, meta_model)) |reason| return reason;
             }
             return null;
@@ -187,8 +197,7 @@ fn findInnerDistinctType(ty: MetaModel.Type, meta_model: *const MetaModel) ?Meta
 }
 
 const Symbol = union(enum) {
-    /// Also functions as a namespace.
-    placeholder,
+    namespace,
     decl: struct {
         type: MetaModel.Type,
         documentation: ?[]const u8 = null,
@@ -233,28 +242,11 @@ const SymbolTree = struct {
         var current_node: ?*Node = null;
         while (name_it.next()) |name_component| {
             const children = if (current_node) |node| &node.children else &tree.root;
-            const gop = try children.getOrPutValue(gpa, name_component, .{ .symbol = .placeholder });
+            const gop = try children.getOrPutValue(gpa, name_component, .{ .symbol = .namespace });
             current_node = gop.value_ptr;
         }
         const node = current_node.?;
-        if (node.symbol != .placeholder) std.debug.panic("symbol collision: {s}", .{name[0 .. name_it.index orelse name.len]});
-        node.symbol = symbol;
-    }
-
-    /// Asserts that a `.placeholder` symbol has already been inserted with the same name.
-    fn insertIntoPlaceholder(
-        tree: *SymbolTree,
-        name: []const u8,
-        symbol: Symbol,
-    ) void {
-        var name_it = std.mem.splitScalar(u8, name, '.');
-        var current_node: ?*Node = null;
-        while (name_it.next()) |name_component| {
-            const children = if (current_node) |node| &node.children else &tree.root;
-            current_node = children.getPtr(name_component) orelse std.debug.panic("could not find placeholder symbol: {s}", .{name});
-        }
-        const node = current_node.?;
-        if (node.symbol != .placeholder) std.debug.panic("symbol collision: {s}", .{name[0 .. name_it.index orelse name.len]});
+        if (node.symbol != .namespace) std.debug.panic("symbol collision: {s}", .{name[0 .. name_it.index orelse name.len]});
         node.symbol = symbol;
     }
 
@@ -287,18 +279,6 @@ const Renderer = struct {
     scope_stack: std.ArrayList(Scope),
     meta_model: *const MetaModel,
     w: *std.Io.Writer,
-    symbolization_table: SymbolizationTable = .empty,
-
-    const SymbolizationTable = std.HashMapUnmanaged(MetaModel.Type, []const u8, MetaModelTypeContext, std.hash_map.default_max_load_percentage);
-
-    const MetaModelTypeContext = struct {
-        pub fn hash(_: MetaModelTypeContext, key: MetaModel.Type) u64 {
-            return key.hash();
-        }
-        pub fn eql(_: MetaModelTypeContext, a: MetaModel.Type, b: MetaModel.Type) bool {
-            return a.eql(b);
-        }
-    };
 
     const Scope = struct {
         name: ?[]const u8,
@@ -310,7 +290,7 @@ const Renderer = struct {
         defer r.scope_stack.items.len -= 1;
 
         switch (node.symbol) {
-            .placeholder => {
+            .namespace => {
                 try r.w.print("pub const {f} = struct {{\n", .{std.zig.fmtId(name)});
                 for (node.children.keys(), node.children.values()) |child_name, *child_node| {
                     try r.renderNode(child_node, child_name);
@@ -323,7 +303,7 @@ const Renderer = struct {
                 try r.renderType(payload.type, node.children);
                 try r.w.writeAll(";\n\n");
             },
-            .structure => |structure| {
+            .structure => |*structure| {
                 if (structure.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
 
                 try r.w.print("pub const {f} = struct {{\n", .{std.zig.fmtId(name)});
@@ -402,9 +382,8 @@ const Renderer = struct {
         }
 
         switch (symbol_map.get(reference_name).?) {
-            .placeholder => unreachable,
             .remove => try r.w.writeAll(reference_name), // keep the old name
-            .rename => |namespaced_name| {
+            .rename, .replace_with => |namespaced_name| {
                 if (config.disable_renaming) {
                     try r.w.writeAll(reference_name);
                 } else {
@@ -474,21 +453,16 @@ const Renderer = struct {
         switch (ty) {
             .@"and", .@"or" => {},
             else => if (children.count() != 0) {
+                std.debug.print("scope:\n", .{});
                 for (r.scope_stack.items, 0..) |scope, i| {
                     std.debug.print("{d}: {?s}\n", .{ i, scope.name });
                 }
-                @panic("unsupported");
+                std.debug.print("children:\n", .{});
+                for (children.keys(), 0..) |child_name, i| {
+                    std.debug.print("{d}: {s}\n", .{ i, child_name });
+                }
+                std.debug.panic("renderType on a '{t}' type with children is unsupported", .{ty});
             },
-        }
-
-        if (r.symbolization_table.get(ty)) |new_name| {
-            if (!r.isRenderingName(new_name)) {
-                std.debug.assert(children.count() == 0);
-                try r.renderNamespacedName(new_name);
-                return;
-            } else {
-                // Don't replace when rendering the symbol itself.
-            }
         }
 
         switch (ty) {
@@ -552,16 +526,9 @@ const Renderer = struct {
                     }
                     try r.w.writeByte('}');
                 } else {
-                    if (isNull(ort.items[ort.items.len - 1])) {
-                        const non_opt_ty: MetaModel.Type = .{ .@"or" = .{ .items = ort.items[0 .. ort.items.len - 1] } };
-                        try r.w.writeByte('?');
-                        try r.renderType(non_opt_ty, children);
-                        return;
-                    }
-
-                    // TODO consider flattening nested or types (e.g `Definition.Result`)
                     try r.w.writeAll("union(enum) {\n");
                     for (ort.items, 0..) |sub_type, i| {
+                        std.debug.assert(!isNull(sub_type));
                         try guessFieldName(r.meta_model, r.w, sub_type, i);
                         try r.w.writeAll(": ");
                         try r.renderType(sub_type, .empty);
@@ -607,25 +574,29 @@ const Renderer = struct {
     }
 
     fn renderProperty(r: *Renderer, property: MetaModel.Property) error{WriteFailed}!void {
-        const is_undefinedable = property.optional orelse false;
-        const is_nullable = isNullable(property.type);
-        // WORKAROUND: recursive SelectionRange
-        const is_selection_range = property.type == .reference and std.mem.eql(u8, property.type.reference.name, "SelectionRange");
-
         if (property.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
 
         try r.w.print("{f}", .{std.zig.fmtIdPU(property.name)});
         try r.w.writeAll(": ");
-        try r.w.writeAll(if (is_selection_range) "?*const " else if (is_undefinedable and !is_nullable) "?" else "");
-        try r.renderType(property.type, .empty);
-        if (is_nullable or is_undefinedable) try r.w.writeAll(" = null");
+        if (unwrapOptional(property.type)) |child_ty| {
+            // WORKAROUND: recursive SelectionRange
+            if (child_ty == .reference and std.mem.eql(u8, child_ty.reference.name, "SelectionRange")) {
+                try r.w.writeAll("?*const ");
+                try r.renderType(child_ty, .empty);
+            } else {
+                try r.renderType(property.type, .empty);
+            }
+        } else {
+            try r.renderType(property.type, .empty);
+        }
+        if (isNullable(property.type)) try r.w.writeAll(" = null");
         try r.w.writeByte(',');
     }
 
     fn renderProperties(
         r: *Renderer,
-        structure: MetaModel.Structure,
-        maybe_extender: ?MetaModel.Structure,
+        structure: *const MetaModel.Structure,
+        maybe_extender: ?*const MetaModel.Structure,
     ) error{WriteFailed}!void {
         const properties: []MetaModel.Property = structure.properties;
         const extends: []MetaModel.Type = structure.extends orelse &.{};
@@ -835,7 +806,6 @@ fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: *const MetaModel) err
     for (config.symbols) |item| {
         const name, const action = item;
         switch (action) {
-            .placeholder => try symbol_tree.insert(gpa, name, .placeholder),
             .remove => {
                 if (!symbols.swapRemove(name)) {
                     std.debug.panic("invalid symbol '{s}' in @import(\"config.zig\").symbols", .{name});
@@ -847,104 +817,177 @@ fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: *const MetaModel) err
                 const symbol_name = if (config.disable_renaming) name else new_name;
                 try symbol_tree.insert(gpa, symbol_name, kv.value);
             },
+            .replace_with => {
+                if (!symbols.swapRemove(name)) {
+                    std.debug.panic("invalid symbol '{s}' in @import(\"config.zig\").symbols", .{name});
+                }
+            },
         }
     }
 
     if (symbols.count() > 0) {
         for (symbols.keys()) |missing| {
-            std.log.err("The LSP type '{s}' is missing in @import(\"config.zig\").symbols", .{missing});
+            std.log.warn("The LSP type '{s}' is missing in @import(\"config.zig\").symbols", .{missing});
         }
-        std.process.exit(1);
     }
 
     return symbol_tree;
 }
 
-fn lookupStructure(meta_model: *const MetaModel, name: []const u8) MetaModel.Structure {
-    for (meta_model.structures) |s| {
+fn lookupStructure(meta_model: *const MetaModel, name: []const u8) *const MetaModel.Structure {
+    for (meta_model.structures) |*s| {
         if (std.mem.eql(u8, s.name, name)) return s;
     }
     std.debug.panic("could not resolve reference to '{s}'", .{name});
 }
 
-fn lookupProperty(name: []const u8, meta_model: *const MetaModel) MetaModel.Property {
+fn lookupProperty(name: []const u8, meta_model: *MetaModel) *MetaModel.Property {
     var name_it: SymbolNamespaceIterator = .init(name, .forward);
     const structure_name = name_it.next().?;
     const first_property_name = name_it.next().?;
+    std.debug.assert(name_it.next() == null);
 
     const structure = lookupStructure(meta_model, structure_name);
-    var result: MetaModel.Property = property: {
-        for (structure.properties) |property| {
-            if (std.mem.eql(u8, property.name, first_property_name)) break :property property;
-        }
-        for (structure.extends orelse &.{}) |ty| {
-            const s = lookupStructure(meta_model, ty.reference.name);
-            for (s.properties) |property| {
-                if (std.mem.eql(u8, property.name, first_property_name)) break :property property;
-            }
-        }
-        std.debug.panic("could not find field '{s}' in {s}", .{ first_property_name, structure.name });
-    };
-
-    while (name_it.next()) |decl_name| {
-        const is_optional_field = result.optional orelse false;
-        if (std.mem.eql(u8, decl_name, "?")) {
-            std.debug.assert(is_optional_field);
-            result.optional = false;
-            continue;
-        } else {
-            std.debug.assert(!is_optional_field);
-        }
-        @panic("TODO nested lookup");
+    for (structure.properties) |*property| {
+        if (std.mem.eql(u8, property.name, first_property_name)) return property;
     }
-    return result;
+    for (structure.extends orelse &.{}) |ty| {
+        const s = lookupStructure(meta_model, ty.reference.name);
+        for (s.properties) |*property| {
+            if (std.mem.eql(u8, property.name, first_property_name)) return property;
+        }
+    }
+    std.debug.panic("could not find field '{s}' in {s}", .{ first_property_name, structure.name });
 }
 
-fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *const MetaModel) error{ OutOfMemory, WriteFailed }![:0]u8 {
+/// - normalize representation of an optional union type
+/// - normalize representation of optional properties
+fn normalizeMetaModel(arena: std.mem.Allocator, meta_model: *MetaModel) error{OutOfMemory}!void {
+    const ctx = struct {
+        fn onType(ally: std.mem.Allocator, ty: *MetaModel.Type) error{OutOfMemory}!void {
+            // normalize the representation of an optional union type
+            if (unwrapOptionalUnion(ty.*)) |inner| {
+                ty.* = try createOptional(ally, inner);
+                return;
+            }
+            // TODO consider flattening nested or types (e.g `Definition.Result`)
+
+            switch (ty.*) {
+                .array => |*array| try onType(ally, array.element),
+                .map => |map| try onType(ally, map.value),
+                .@"and" => |and_ty| for (and_ty.items) |*inner_ty| try onType(ally, inner_ty),
+                .@"or" => |or_ty| for (or_ty.items) |*inner_ty| try onType(ally, inner_ty),
+                .tuple => |tuple| for (tuple.items) |*inner_ty| try onType(ally, inner_ty),
+                .literal => |literal| for (literal.value.properties) |*property| try onProperty(ally, property),
+                .base, .reference, .stringLiteral, .integerLiteral, .booleanLiteral => {},
+            }
+        }
+        fn onProperty(ally: std.mem.Allocator, property: *MetaModel.Property) error{OutOfMemory}!void {
+            try onType(ally, &property.type);
+            if (property.optional orelse false) {
+                if (unwrapOptional(property.type) == null) {
+                    property.type = try createOptional(ally, property.type);
+                }
+                property.optional = null;
+            }
+        }
+    };
+    const onType = ctx.onType;
+    const onProperty = ctx.onProperty;
+    for (meta_model.requests) |*request| {
+        if (request.params) |*params| switch (params.*) {
+            .Type => |*ty| try onType(arena, ty),
+            .array_of_Type => |types| for (types) |*ty| try onType(arena, ty),
+        };
+        try onType(arena, &request.result);
+        if (request.partialResult) |*ty| try onType(arena, ty);
+        if (request.errorData) |*ty| try onType(arena, ty);
+        if (request.registrationOptions) |*ty| try onType(arena, ty);
+    }
+    for (meta_model.notifications) |*notification| {
+        if (notification.params) |*params| switch (params.*) {
+            .Type => |*ty| try onType(arena, ty),
+            .array_of_Type => |types| for (types) |*ty| try onType(arena, ty),
+        };
+        if (notification.registrationOptions) |*ty| try onType(arena, ty);
+    }
+    for (meta_model.structures) |*structure| {
+        if (structure.extends) |extends| for (extends) |*ty| try onType(arena, ty);
+        if (structure.mixins) |mixins| for (mixins) |*ty| try onType(arena, ty);
+        for (structure.properties) |*property| try onProperty(arena, property);
+    }
+    // for (meta_model.enumerations) |*enumeration| {}
+    for (meta_model.typeAliases) |*type_alias| {
+        try onType(arena, &type_alias.type);
+    }
+}
+
+fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfMemory, WriteFailed }![:0]u8 {
+    var arena: std.heap.ArenaAllocator = .init(gpa);
+    defer arena.deinit();
+
+    try normalizeMetaModel(arena.allocator(), meta_model);
+
+    var type_aliases: std.ArrayList(MetaModel.TypeAlias) = .empty;
+    defer type_aliases.deinit(gpa);
+
+    if (!config.disable_symbolization) {
+        try type_aliases.ensureTotalCapacityPrecise(gpa, meta_model.typeAliases.len + config.symbolize.len);
+
+        type_aliases.appendSliceAssumeCapacity(meta_model.typeAliases);
+
+        for (config.symbolize) |property_name| {
+            const expect_optional = std.mem.endsWith(u8, property_name, ".?");
+            const trimmed_property_name = property_name[0 .. property_name.len - @as(usize, if (expect_optional) 2 else 0)];
+            const property = lookupProperty(trimmed_property_name, meta_model);
+
+            if (expect_optional) property.type = unwrapOptional(property.type).?;
+
+            type_aliases.appendAssumeCapacity(.{
+                .name = property_name,
+                .type = property.type,
+                .documentation = property.documentation,
+                .since = property.since,
+                .sinceTags = property.sinceTags,
+                .proposed = property.proposed,
+                .deprecated = property.deprecated,
+            });
+
+            const reference_type: MetaModel.Type = .{ .reference = .{ .name = property_name } };
+            property.type = if (expect_optional) try createOptional(arena.allocator(), reference_type) else reference_type;
+        }
+
+        for (meta_model.requests) |*request| {
+            const distinct_result_type = findInnerDistinctType(&request.result, meta_model) orelse continue;
+
+            const result_name = try std.fmt.allocPrint(arena.allocator(), "{s}.Result", .{request.method});
+            try type_aliases.append(gpa, .{ .name = result_name, .type = distinct_result_type.* });
+            defer distinct_result_type.* = .{ .reference = .{ .name = result_name } };
+
+            const distinct_partial_result_type = findInnerDistinctType(if (request.partialResult) |*ty| ty else continue, meta_model) orelse continue;
+            if (distinct_partial_result_type.eql(distinct_result_type.*)) {
+                distinct_partial_result_type.* = .{ .reference = .{ .name = result_name } };
+            } else {
+                const partial_result_name = try std.fmt.allocPrint(arena.allocator(), "{s}.PartialResult", .{request.method});
+                try type_aliases.append(gpa, .{ .name = partial_result_name, .type = distinct_partial_result_type.* });
+                distinct_partial_result_type.* = .{ .reference = .{ .name = partial_result_name } };
+            }
+        }
+
+        meta_model.typeAliases = type_aliases.items;
+    }
+
     var symbol_tree = try constructSymbolTree(gpa, meta_model);
     defer symbol_tree.deinit(gpa);
 
     var aw: std.Io.Writer.Allocating = .init(gpa);
     defer aw.deinit();
 
-    var symbolization_table: Renderer.SymbolizationTable = .empty;
-    defer symbolization_table.deinit(gpa);
-
-    if (!config.disable_symbolization) {
-        try symbolization_table.ensureUnusedCapacity(gpa, config.symbolize.len);
-        for (config.symbolize) |symbolize| {
-            const property_name, const new_name = symbolize;
-            const property = lookupProperty(property_name, meta_model);
-            std.debug.assert((property.optional orelse false) == false); // symbolizing an optional property is unsupported
-            symbol_tree.insertIntoPlaceholder(new_name, .{ .decl = .{
-                .type = property.type,
-                .documentation = property.documentation,
-            } });
-            symbolization_table.putAssumeCapacityNoClobber(property.type, new_name);
-        }
-
-        try symbolization_table.ensureUnusedCapacity(gpa, 2 * request_result_names.kvs.len);
-        for (meta_model.requests) |request| {
-            const distinct_result_type = findInnerDistinctType(request.result, meta_model) orelse continue;
-            const result_name, const partial_result_name = request_result_names.get(request.method) orelse std.debug.panic("missing namespace name for '{s}'", .{request.method});
-
-            symbol_tree.insertIntoPlaceholder(result_name, .{ .decl = .{ .type = distinct_result_type } });
-            symbolization_table.putAssumeCapacity(distinct_result_type, result_name); // clobber?
-
-            const distinct_partial_result_type = findInnerDistinctType(request.partialResult orelse continue, meta_model) orelse continue;
-            if (!distinct_partial_result_type.eql(distinct_result_type)) {
-                symbol_tree.insertIntoPlaceholder(partial_result_name, .{ .decl = .{ .type = distinct_partial_result_type } });
-                symbolization_table.putAssumeCapacity(distinct_partial_result_type, partial_result_name); // clobber?
-            }
-        }
-    }
-
     var scope_stack: [8]Renderer.Scope = undefined;
     var renderer: Renderer = .{
         .scope_stack = .initBuffer(&scope_stack),
         .meta_model = meta_model,
         .w = &aw.writer,
-        .symbolization_table = symbolization_table,
     };
     renderer.scope_stack.appendAssumeCapacity(.{ .name = null, .symbols = symbol_tree.root });
 
@@ -976,29 +1019,14 @@ const Config = struct {
     disable_renaming: bool,
     disable_symbolization: bool,
     symbols: []const struct { []const u8, Action },
-    symbolize: []const struct { []const u8, []const u8 },
+    symbolize: []const []const u8,
 
     const Action = union(enum) {
-        placeholder,
         remove,
         rename: []const u8,
+        replace_with: []const u8,
     };
 };
 
 const config: Config = @import("config.zon");
 const symbol_map: std.StaticStringMap(Config.Action) = .initComptime(config.symbols);
-
-// zig fmt: off
-var request_result_names: std.StaticStringMap([2][]const u8) = .initComptime(&.{
-    .{ "textDocument/implementation",            .{ "implementation.Result",            "implementation.PartialResult" }            },
-    .{ "textDocument/typeDefinition",            .{ "type_definition.Result",           "type_definition.PartialResult" }           },
-    .{ "textDocument/declaration",               .{ "Declaration.Result",               "Declaration.PartialResult" }               },
-    .{ "textDocument/semanticTokens/full/delta", .{ "semantic_tokens.Result.FullDelta", "semantic_tokens.Result.FullDelta.Partial"} },
-    .{ "textDocument/inlineCompletion",          .{ "inline_completion.Result",         "inline_completion.PartialResult" }         },
-    .{ "textDocument/completion",                .{ "completion.Result",                "completion.PartialResult" }                },
-    .{ "textDocument/definition",                .{ "Definition.Result",                "Definition.PartialResult" }                },
-    .{ "textDocument/documentSymbol",            .{ "DocumentSymbol.Result",            "DocumentSymbol.PartialResult" }            },
-    .{ "textDocument/codeAction",                .{ "CodeAction.Result",                "CodeAction.PartialResult" }                },
-    .{ "workspace/symbol",                       .{ "workspace.Symbol.Result",          "workspace.Symbol.PartialResult" }          },
-});
-// zig fmt: on

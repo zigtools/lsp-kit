@@ -376,20 +376,9 @@ const Renderer = struct {
     }
 
     fn renderReference(r: *Renderer, reference_name: []const u8) error{WriteFailed}!void {
-        if (config.disable_renaming) {
-            try r.w.writeAll(reference_name);
-            return;
-        }
-
         switch (symbol_map.get(reference_name).?) {
             .remove => try r.w.writeAll(reference_name), // keep the old name
-            .rename, .replace_with => |namespaced_name| {
-                if (config.disable_renaming) {
-                    try r.w.writeAll(reference_name);
-                } else {
-                    try r.renderNamespacedName(namespaced_name);
-                }
-            },
+            .rename, .replace_with => |namespaced_name| try r.renderNamespacedName(namespaced_name),
         }
     }
 
@@ -814,8 +803,7 @@ fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: *const MetaModel) err
             .rename => |new_name| {
                 const kv = symbols.fetchSwapRemove(name) orelse
                     std.debug.panic("invalid symbol '{s}' in @import(\"config.zig\").symbols", .{name});
-                const symbol_name = if (config.disable_renaming) name else new_name;
-                try symbol_tree.insert(gpa, symbol_name, kv.value);
+                try symbol_tree.insert(gpa, new_name, kv.value);
             },
             .replace_with => {
                 if (!symbols.swapRemove(name)) {
@@ -931,7 +919,7 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
     var type_aliases: std.ArrayList(MetaModel.TypeAlias) = .empty;
     defer type_aliases.deinit(gpa);
 
-    if (!config.disable_symbolization) {
+    {
         try type_aliases.ensureTotalCapacityPrecise(gpa, meta_model.typeAliases.len + config.symbolize.len);
 
         type_aliases.appendSliceAssumeCapacity(meta_model.typeAliases);
@@ -1016,8 +1004,6 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
 }
 
 const Config = struct {
-    disable_renaming: bool,
-    disable_symbolization: bool,
     symbols: []const struct { []const u8, Action },
     symbolize: []const []const u8,
 

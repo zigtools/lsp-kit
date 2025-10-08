@@ -1,6 +1,4 @@
 .{
-    .disable_renaming = false, // usefull for debugging, will also disable symbol reordering
-    .disable_symbolization = false, // usefull for debugging
     // zig fmt: off
     .symbols = .{
         // only used to extend other types

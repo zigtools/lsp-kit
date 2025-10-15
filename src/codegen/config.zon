@@ -37,7 +37,7 @@
         .{"PartialResultParams",                        .{ .rename = "PartialResultParams" } },
         .{"PreviousResultId",                           .{ .rename = "PreviousResultId" } },
         .{"ProgressParams",                             .{ .rename = "ProgressParams" } },
-        .{"ProgressToken",                              .{ .rename = "ProgressToken" } },
+        .{"ProgressToken",                              .{ .rename = "ProgressToken" } }, // TODO alias to `ID`
         .{"ErrorCodes",                                 .{ .rename = "ErrorCodes" } },
         .{"LSPErrorCodes",                              .{ .rename = "LSPErrorCodes" } },
 
@@ -50,6 +50,7 @@
         .{"InsertTextFormat",                           .{ .rename = "InsertTextFormat" } },
         .{"InsertTextMode",                             .{ .rename = "InsertTextMode" } },
         .{"CancelParams",                               .{ .rename = "CancelParams" } },
+        .{"CancelParams.id",                            .{ .replace_with = "ID" } },
         .{"Color",                                      .{ .rename = "Color" } },
         .{"StringValue",                                .{ .rename = "StringValue" } },
         .{"SymbolInformation",                          .{ .rename = "SymbolInformation" } },
@@ -348,6 +349,7 @@
         .{"DiagnosticServerCancellationData",           .{ .rename = "Diagnostic.ServerCancellationData" } },
         .{"DiagnosticSeverity",                         .{ .rename = "Diagnostic.Severity" } },
         .{"DiagnosticTag",                              .{ .rename = "Diagnostic.Tag" } },
+        .{"Diagnostic.code.?",                          .{ .replace_with = "ID" } },
 
         // textDocument/publishDiagnostics
         .{"PublishDiagnosticsParams",                   .{ .rename = "publish_diagnostics.Params" } },
@@ -622,6 +624,9 @@
         "CompletionItem.textEdit.?",
         "WorkspaceSymbol.location",
         "WorkspaceOptions.textDocumentContent.?",
+
+        "Diagnostic.code.?",
+        "CancelParams.id",
 
         "ServerCapabilities.textDocumentSync.?",
         "ServerCapabilities.notebookDocumentSync.?",

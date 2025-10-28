@@ -23,6 +23,8 @@ pub const LSPArray = []LSPAny;
 pub const LSPObject = std.json.ArrayHashMap(std.json.Value);
 
 pub const ID = union(enum) {
+    /// The LSP specification generally limits numbers to the range `-2^31` to `2^31 - 1`.
+    /// A `i64` is used here to cover against implementations that may decide to use larger numeric ranges.
     number: i64,
     string: []const u8,
 

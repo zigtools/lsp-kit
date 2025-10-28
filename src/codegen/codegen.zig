@@ -86,14 +86,6 @@ fn fmtDocs(text: []const u8, comment_kind: FormatDocs.CommentKind) std.fmt.Alt(F
     return .{ .data = .{ .text = text, .comment_kind = comment_kind } };
 }
 
-fn messageDirectionName(message_direction: MetaModel.MessageDirection) []const u8 {
-    return switch (message_direction) {
-        .clientToServer => "client_to_server",
-        .serverToClient => "server_to_client",
-        .both => "both",
-    };
-}
-
 fn guessFieldName(meta_model: *const MetaModel, writer: *std.Io.Writer, typ: MetaModel.Type, i: usize) std.Io.Writer.Error!void {
     switch (typ) {
         .base => |base| switch (base.name) {
@@ -647,7 +639,7 @@ const Renderer = struct {
             \\    RequestMetadata{{
             \\        .method = {f},
             \\        .documentation = {?f},
-            \\        .direction = .{s},
+            \\        .direction = .{f},
             \\        .Params = {?f},
             \\        .Result = {f},
             \\        .PartialResult = {?f},
@@ -660,7 +652,7 @@ const Renderer = struct {
             std.zig.fmtString(request.method),
             std.json.fmt(request.method, .{}),
             if (request.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
-            messageDirectionName(request.messageDirection),
+            fmtToSnakeCase(@tagName(request.messageDirection)),
             // Multiparams not used here, so we dont have to implement them :)
             if (request.params) |params| FormatType{ .r = r, .ty = params.one } else null,
             FormatType{ .r = r, .ty = request.result },
@@ -680,7 +672,7 @@ const Renderer = struct {
             \\    NotificationMetadata{{
             \\        .method = {f},
             \\        .documentation = {?f},
-            \\        .direction = .{s},
+            \\        .direction = .{f},
             \\        .Params = {?f},
             \\        .registration = .{{ .method = {?f}, .Options = {?f} }},
             \\    }},
@@ -690,7 +682,7 @@ const Renderer = struct {
             std.zig.fmtString(notification.method),
             std.json.fmt(notification.method, .{}),
             if (notification.documentation) |documentation| std.json.fmt(documentation, .{}) else null,
-            messageDirectionName(notification.messageDirection),
+            fmtToSnakeCase(@tagName(notification.messageDirection)),
             // Multiparams not used here, so we dont have to implement them :)
             if (notification.params) |params| FormatType{ .r = r, .ty = params.one } else null,
             if (notification.registrationMethod) |method| std.json.fmt(method, .{}) else null,

@@ -916,6 +916,17 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
 
     try normalizeMetaModel(arena.allocator(), meta_model);
 
+    var original_symbol_names = blk: {
+        var symbols: std.StringArrayHashMapUnmanaged(void) = .empty;
+        errdefer symbols.deinit(gpa);
+        try symbols.ensureTotalCapacity(gpa, meta_model.structures.len + meta_model.enumerations.len + meta_model.typeAliases.len);
+        for (meta_model.structures) |structure| symbols.putAssumeCapacityNoClobber(structure.name, {});
+        for (meta_model.enumerations) |enumeration| symbols.putAssumeCapacityNoClobber(enumeration.name, {});
+        for (meta_model.typeAliases) |type_alias| symbols.putAssumeCapacityNoClobber(type_alias.name, {});
+        break :blk symbols;
+    };
+    defer original_symbol_names.deinit(gpa);
+
     var type_aliases: std.ArrayList(MetaModel.TypeAlias) = .empty;
     defer type_aliases.deinit(gpa);
 
@@ -988,17 +999,59 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
         try renderer.renderNode(symbol, name);
     }
 
-    try renderer.w.writeAll("const notifications_generated: std.StaticStringMap(NotificationMetadata) = .initComptime(&.{\n");
-    for (meta_model.notifications) |notification| {
-        try renderer.renderNotification(notification);
-    }
-    try renderer.w.writeAll("\n});");
+    {
+        original_symbol_names.sort(struct {
+            names: []const []const u8,
+            pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
+                const a_name = ctx.names[a_index];
+                const b_name = ctx.names[b_index];
+                return symbol_map.getIndex(a_name).? < symbol_map.getIndex(b_name).?;
+            }
+        }{ .names = original_symbol_names.keys() });
 
-    try renderer.w.writeAll("const requests_generated: std.StaticStringMap(RequestMetadata) = .initComptime(&.{\n");
-    for (meta_model.requests) |request| {
-        try renderer.renderRequest(request);
+        try renderer.w.writeAll(
+            \\/// A flat namespace that aliases all LSP types under their original name from the official specification.
+            \\pub const flat = struct {
+            \\  pub const parser = types.parser;
+            \\  pub const URI = types.URI;
+            \\  pub const DocumentUri = types.DocumentUri;
+            \\  pub const RegExp = types.RegExp;
+            \\  pub const LSPAny = types.LSPAny;
+            \\  pub const LSPArray = types.LSPArray;
+            \\  pub const LSPObject = types.LSPObject;
+            \\  pub const ID = types.ID;
+            \\  pub const MessageDirection = types.MessageDirection;
+            \\  pub const RegistrationMetadata = types.RegistrationMetadata;
+            \\  pub const NotificationMetadata = types.NotificationMetadata;
+            \\  pub const RequestMetadata = types.RequestMetadata;
+            \\  pub const requests = types.requests;
+            \\  pub const notifications = types.notifications;
+            \\
+            \\
+        );
+
+        for (original_symbol_names.keys()) |name| {
+            switch (symbol_map.get(name).?) {
+                .remove => continue,
+                .rename, .replace_with => |new_name| try renderer.w.print("pub const {s} = types.{s};\n", .{ name, new_name }),
+            }
+        }
+        try renderer.w.writeAll("};\n\n");
     }
-    try renderer.w.writeAll("\n});");
+
+    {
+        try renderer.w.writeAll("const notifications_generated: std.StaticStringMap(NotificationMetadata) = .initComptime(&.{\n");
+        for (meta_model.notifications) |notification| {
+            try renderer.renderNotification(notification);
+        }
+        try renderer.w.writeAll("\n});\n\n");
+
+        try renderer.w.writeAll("const requests_generated: std.StaticStringMap(RequestMetadata) = .initComptime(&.{\n");
+        for (meta_model.requests) |request| {
+            try renderer.renderRequest(request);
+        }
+        try renderer.w.writeAll("\n});");
+    }
 
     return try aw.toOwnedSliceSentinel(0);
 }

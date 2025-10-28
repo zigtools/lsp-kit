@@ -1,4 +1,19 @@
 //! Type definitions of the Language Server Protocol.
+//!
+//! These symbols have been "ziggified" to make better use of namespacing and
+//! avoid redundancy in names. See the [Zig Style Guide](https://ziglang.org/documentation/master/#Style-Guide)
+//!
+//! Examples:
+//!   - `CompletionItem`              has been renamed to `Completion.Item`
+//!   - `SemanticTokensRangeParams`   has been renamed to `semantic_tokens.Params.Range`
+//!   - `WorkspaceFoldersChangeEvent` has been renamed to `workspace.folders.ChangeEvent`
+//!   - `CreateFileOptions`           has been renamed to `WorkspaceEdit.CreateFile.Options`
+//!
+//! Contributions that try to improve symbol names are welcome.
+//!
+//! To find the new name for each symbol, use the `@import("lsp").flat`
+//! namespace. This can also be used in place of the "ziggified" symbols if
+//! the original names in the LSP specification are preferred.
 
 const std = @import("std");
 

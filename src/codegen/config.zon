@@ -40,22 +40,20 @@
         .{"ProgressToken",                              .{ .rename = "ProgressToken" } }, // TODO alias to `ID`
         .{"ErrorCodes",                                 .{ .rename = "ErrorCodes" } },
         .{"LSPErrorCodes",                              .{ .rename = "LSPErrorCodes" } },
-
-        // TODO
         .{"FormattingOptions",                          .{ .rename = "FormattingOptions" } },
-        .{"InitializedParams",                          .{ .rename = "InitializedParams" } },
-        .{"InitializeError",                            .{ .rename = "InitializeError" } },
-        .{"InitializeParams",                           .{ .rename = "InitializeParams" } },
-        .{"InitializeResult",                           .{ .rename = "InitializeResult" } },
         .{"InsertTextFormat",                           .{ .rename = "InsertTextFormat" } },
         .{"InsertTextMode",                             .{ .rename = "InsertTextMode" } },
-        .{"CancelParams",                               .{ .rename = "CancelParams" } },
-        .{"CancelParams.id",                            .{ .replace_with = "ID" } },
         .{"Color",                                      .{ .rename = "Color" } },
         .{"StringValue",                                .{ .rename = "StringValue" } },
         .{"SymbolInformation",                          .{ .rename = "SymbolInformation" } },
         .{"SymbolKind",                                 .{ .rename = "SymbolKind" } },
         .{"SymbolTag",                                  .{ .rename = "SymbolTag" } },
+        .{"InitializedParams",                          .{ .rename = "InitializedParams" } },
+        .{"InitializeError",                            .{ .rename = "InitializeError" } },
+        .{"InitializeParams",                           .{ .rename = "InitializeParams" } },
+        .{"InitializeResult",                           .{ .rename = "InitializeResult" } },
+        .{"CancelParams",                               .{ .rename = "CancelParams" } },
+        .{"CancelParams.id",                            .{ .replace_with = "ID" } },
 
         .{"TextDocumentItem",                           .{ .rename = "TextDocument" } } ,
         .{"TextDocumentEdit",                           .{ .rename = "TextDocument.Edit" } },
@@ -140,7 +138,8 @@
         .{"CompletionClientCapabilities",               .{ .rename = "ClientCapabilities.TextDocument.Completion" } },
         .{"ClientCompletionItemOptions",                .{ .rename = "ClientCapabilities.TextDocument.Completion.ItemOptions" } },
         .{"CompletionItemDefaults",                     .{ .rename = "ClientCapabilities.TextDocument.Completion.ItemDefaults" } },
-        .{"EditRangeWithInsertReplace",                 .{ .rename = "ClientCapabilities.TextDocument.Completion.EditRangeWithInsertReplace" } },
+        .{"CompletionItemDefaults.editRange.?",         .{ .rename = "ClientCapabilities.TextDocument.Completion.EditRange" } },
+        .{"EditRangeWithInsertReplace",                 .{ .rename = "ClientCapabilities.TextDocument.Completion.EditRange.WithInsertReplace" } },
         .{"CompletionItemApplyKinds",                   .{ .rename = "ClientCapabilities.TextDocument.Completion.ItemApplyKinds" } },
         .{"CompletionItemTagOptions",                   .{ .rename = "ClientCapabilities.TextDocument.Completion.ItemTagOptions" } },
         .{"ClientCompletionItemOptionsKind",            .{ .rename = "ClientCapabilities.TextDocument.Completion.ItemKindOptions" } },
@@ -433,7 +432,7 @@
         .{"InlineCompletionList",                       .{ .rename = "inline_completion.List" } },
         .{"InlineCompletionContext",                    .{ .rename = "inline_completion.Context" } },
         .{"InlineCompletionTriggerKind",                .{ .rename = "inline_completion.Context.TriggerKind" } },
-        .{"SelectedCompletionInfo",                     .{ .rename = "inline_completion.Context.SelectedCompletionInfo" } }, // TODO
+        .{"SelectedCompletionInfo",                     .{ .rename = "inline_completion.Context.SelectedCompletionInfo" } },
         .{"InlineCompletionOptions",                    .{ .rename = "inline_completion.Options" } },
         .{"textDocument/inlineCompletion.Result",       .{ .rename = "inline_completion.Result" } },
         .{"InlineCompletionRegistrationOptions",        .{ .rename = "inline_completion.RegistrationOptions" } },
@@ -593,7 +592,7 @@
 
         // window/showMessageRequest
         .{"ShowMessageRequestParams",                   .{ .rename = "window.show_message_request.Params" } },
-        .{"MessageActionItem",                          .{ .rename = "window.show_message_request.Item" } }, // TODO
+        .{"MessageActionItem",                          .{ .rename = "window.show_message_request.Item" } },
 
         // window/showDocument
         .{"ShowDocumentParams",                         .{ .rename = "window.show_document.Params" } },
@@ -624,6 +623,7 @@
         "CompletionItem.textEdit.?",
         "WorkspaceSymbol.location",
         "WorkspaceOptions.textDocumentContent.?",
+        "CompletionItemDefaults.editRange.?",
 
         "Diagnostic.code.?",
         "CancelParams.id",

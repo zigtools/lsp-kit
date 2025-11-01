@@ -1080,8 +1080,8 @@ pub const BaseProtocolHeader = struct {
 
     test "parse with oversized header field" {
         const stream = struct {
-            fn stream(_: *std.Io.Reader, _: *std.Io.Writer, _: std.Io.Limit) std.Io.Reader.StreamError!usize {
-                return error.EndOfStream;
+            fn stream(_: *std.Io.Reader, w: *std.Io.Writer, _: std.Io.Limit) std.Io.Reader.StreamError!usize {
+                return try w.write("a");
             }
         }.stream;
 

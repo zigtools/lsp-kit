@@ -14,11 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        zig-version: [master]
         os: [ubuntu-22.04, macos-latest, windows-latest]
-        include:
-          - zig-version: 0.15.1
-            os: ubuntu-22.04
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -27,10 +23,10 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: ${{ matrix.zig-version }}
+          version: master
 
       - name: Setup kcov
-        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04' && matrix.zig-version == 'master'
+        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04'
         run: |
           wget https://github.com/SimonKagstrom/kcov/releases/download/v42/kcov-amd64.tar.gz
           sudo tar xf kcov-amd64.tar.gz -C /
@@ -45,11 +41,11 @@ jobs:
         run: zig build --summary all
 
       - name: Collect Coverage
-        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04' && matrix.zig-version == 'master'
+        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04'
         run: zig build coverage -Duse-llvm --summary all
 
       - name: Upload coverage reports to Codecov
-        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04' && matrix.zig-version == 'master'
+        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04'
         uses: codecov/codecov-action@v5
         with:
           directory: zig-out/coverage/kcov-merged

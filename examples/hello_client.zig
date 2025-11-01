@@ -57,6 +57,10 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
+    var threaded: std.Io.Threaded = .init(gpa);
+    defer threaded.deinit();
+    const io = threaded.io();
+
     const args = try std.process.argsAlloc(gpa);
     defer std.process.argsFree(gpa, args);
 
@@ -83,7 +87,7 @@ pub fn main() !void {
     //
     // The `lsp.Transport.Stdio` implements the necessary logic to read and write messages over stdio.
     var read_buffer: [256]u8 = undefined;
-    var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, child_process.stdout.?, child_process.stdin.?);
+    var stdio_transport: lsp.Transport.Stdio = .init(io, &read_buffer, .{ .handle = child_process.stdout.?.handle }, child_process.stdin.?);
     const transport: *lsp.Transport = &stdio_transport.transport;
 
     // The order of exchanged messages will look similar to this:
@@ -212,7 +216,7 @@ pub fn main() !void {
 
 fn fatalWithUsage(comptime format: []const u8, args: anytype) noreturn {
     {
-        const stderr = std.debug.lockStderrWriter(&.{});
+        const stderr, _ = std.debug.lockStderrWriter(&.{});
         defer std.debug.unlockStderrWriter();
         stderr.writeAll(usage) catch {};
     }

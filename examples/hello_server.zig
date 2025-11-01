@@ -41,12 +41,16 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
+    var threaded: std.Io.Threaded = .init(gpa);
+    defer threaded.deinit();
+    const io = threaded.io();
+
     // Language servers can support multiple communication channels (e.g. stdio, pipes, sockets).
     // See https://microsoft.github.io/language-server-protocol/specifications/specification-current/#implementationConsiderations
     //
     // The `lsp.Transport.Stdio` implements the necessary logic to read and write messages over stdio.
     var read_buffer: [256]u8 = undefined;
-    var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, .stdin(), .stdout());
+    var stdio_transport: lsp.Transport.Stdio = .init(io, &read_buffer, .stdin(), .stdout());
     const transport: *lsp.Transport = &stdio_transport.transport;
 
     // keep track of opened documents

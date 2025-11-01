@@ -1146,13 +1146,15 @@ pub const Transport = struct {
 
     pub const Stdio = struct {
         transport: Transport,
+        io: std.Io,
         reader: std.Io.Reader,
-        read_from: std.fs.File,
+        read_from: std.Io.File,
         write_to: std.fs.File,
 
         pub fn init(
+            io: std.Io,
             read_buffer: []u8,
-            read_from: std.fs.File,
+            read_from: std.Io.File,
             write_to: std.fs.File,
         ) Stdio {
             return .{
@@ -1162,7 +1164,8 @@ pub const Transport = struct {
                         .writeJsonMessage = &Stdio.writeJsonMessage,
                     },
                 },
-                .reader = std.fs.File.Reader.initInterface(read_buffer),
+                .io = io,
+                .reader = std.Io.File.Reader.initInterface(read_buffer),
                 .read_from = read_from,
                 .write_to = write_to,
             };
@@ -1170,7 +1173,8 @@ pub const Transport = struct {
 
         fn readJsonMessage(transport: *Transport, allocator: std.mem.Allocator) ReadError![]u8 {
             const stdio: *Stdio = @fieldParentPtr("transport", transport);
-            var file_reader: std.fs.File.Reader = .{
+            var file_reader: std.Io.File.Reader = .{
+                .io = stdio.io,
                 .file = stdio.read_from,
                 .mode = .streaming_reading,
                 .interface = stdio.reader,

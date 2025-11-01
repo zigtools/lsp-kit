@@ -16,9 +16,13 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
+    var threaded: std.Io.Threaded = .init(gpa);
+    defer threaded.deinit();
+    const io = threaded.io();
+
     // LSP implementations typically communicate over stdio (stdin and stdout)
     var read_buffer: [256]u8 = undefined;
-    var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, .stdin(), .stdout());
+    var stdio_transport: lsp.Transport.Stdio = .init(io, &read_buffer, .stdin(), .stdout());
     const transport: *lsp.Transport = &stdio_transport.transport;
 
     // The handler is a user provided type that stores the state of the

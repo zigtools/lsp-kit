@@ -226,6 +226,8 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
     var text_document_will_save_wait_until: Status = .disabled;
     var text_document_did_save: Status = .disabled;
 
+    // https://github.com/microsoft/language-server-protocol/issues/1220
+    // https://github.com/microsoft/language-server-protocol/issues/2110
     if (capabilities.textDocumentSync) |text_document_sync| {
         switch (text_document_sync) {
             .text_document_sync_options => |options| {

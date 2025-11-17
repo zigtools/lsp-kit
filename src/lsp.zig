@@ -1486,7 +1486,7 @@ test writeErrorResponse {
 
 pub const minimum_logging_buffer_size: usize = 128;
 
-/// Creates a `window/logMessage` notification.
+/// Creates a [window/logMessage](https://microsoft.github.io/language-server-protocol/specifications/specification-current/#window_logMessage) notification.
 /// Returns a slice that points into `buffer`.
 pub fn bufPrintLogMessage(
     /// A temporary buffer which will be used to store the json message.

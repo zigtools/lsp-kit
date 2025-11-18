@@ -192,7 +192,8 @@ const Symbol = union(enum) {
     namespace,
     decl: struct {
         type: MetaModel.Type,
-        documentation: ?[]const u8 = null,
+        original_name: ?[]const u8,
+        documentation: ?[]const u8,
     },
     structure: MetaModel.Structure,
     enumeration: MetaModel.Enumeration,
@@ -291,12 +292,22 @@ const Renderer = struct {
             },
             .decl => |payload| {
                 if (payload.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
+                if (payload.original_name) |original_name| {
+                    if (!std.mem.eql(u8, name, original_name)) {
+                        if (payload.documentation != null) try r.w.writeAll("\n///\n");
+                        try r.w.print("/// LSP Specification name: `{s}`\n", .{original_name});
+                    }
+                }
                 try r.w.print("pub const {f} = ", .{std.zig.fmtId(name)});
                 try r.renderType(payload.type, node.children);
                 try r.w.writeAll(";\n\n");
             },
             .structure => |*structure| {
                 if (structure.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
+                if (!std.mem.eql(u8, name, structure.name)) {
+                    if (structure.documentation != null) try r.w.writeAll("\n///\n");
+                    try r.w.print("/// LSP Specification name: `{s}`\n", .{structure.name});
+                }
 
                 try r.w.print("pub const {f} = struct {{\n", .{std.zig.fmtId(name)});
                 try r.renderProperties(structure, null);
@@ -313,6 +324,10 @@ const Renderer = struct {
                     .uinteger => "enum(u32)",
                 };
                 if (enumeration.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
+                if (!std.mem.eql(u8, name, enumeration.name)) {
+                    if (enumeration.documentation != null) try r.w.writeAll("\n///\n");
+                    try r.w.print("/// LSP Specification name: `{s}`\n", .{enumeration.name});
+                }
                 try r.w.print("pub const {f} = {s} {{\n", .{ std.zig.fmtId(name), container_kind });
 
                 var contains_empty_enum = false;
@@ -759,13 +774,17 @@ test SymbolNamespaceIterator {
     try std.testing.expect(it.next() == null);
 }
 
-fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: *const MetaModel) error{OutOfMemory}!SymbolTree {
+fn constructSymbolTree(
+    gpa: std.mem.Allocator,
+    arena: std.mem.Allocator,
+    meta_model: *const MetaModel,
+) error{OutOfMemory}!SymbolTree {
     var symbols: std.StringArrayHashMapUnmanaged(Symbol) = .empty;
     defer symbols.deinit(gpa);
 
     try symbols.ensureTotalCapacity(
         gpa,
-        meta_model.structures.len + meta_model.enumerations.len + meta_model.typeAliases.len,
+        meta_model.structures.len + meta_model.enumerations.len + meta_model.typeAliases.len + config.symbolize.len,
     );
 
     for (meta_model.structures) |structure| {
@@ -777,8 +796,52 @@ fn constructSymbolTree(gpa: std.mem.Allocator, meta_model: *const MetaModel) err
     for (meta_model.typeAliases) |type_alias| {
         symbols.putAssumeCapacityNoClobber(type_alias.name, .{ .decl = .{
             .type = type_alias.type,
+            .original_name = type_alias.name,
             .documentation = type_alias.documentation,
         } });
+    }
+
+    for (config.symbolize) |property_name| {
+        const expect_optional = std.mem.endsWith(u8, property_name, ".?");
+        const trimmed_property_name = property_name[0 .. property_name.len - @as(usize, if (expect_optional) 2 else 0)];
+        const property = lookupProperty(trimmed_property_name, meta_model);
+
+        if (expect_optional) property.type = unwrapOptional(property.type).?;
+
+        symbols.putAssumeCapacityNoClobber(property_name, .{ .decl = .{
+            .type = property.type,
+            .original_name = null,
+            .documentation = property.documentation,
+        } });
+
+        const reference_type: MetaModel.Type = .{ .reference = .{ .name = property_name } };
+        property.type = if (expect_optional) try createOptional(arena, reference_type) else reference_type;
+    }
+
+    // Add symbols for the Result types i.e. return types of various requests.
+    for (meta_model.requests) |*request| {
+        const distinct_result_type = findInnerDistinctType(&request.result, meta_model) orelse continue;
+
+        const result_name = try std.fmt.allocPrint(arena, "{s}.Result", .{request.method});
+        try symbols.putNoClobber(gpa, result_name, .{ .decl = .{
+            .type = distinct_result_type.*,
+            .original_name = null,
+            .documentation = null,
+        } });
+        defer distinct_result_type.* = .{ .reference = .{ .name = result_name } };
+
+        const distinct_partial_result_type = findInnerDistinctType(if (request.partialResult) |*ty| ty else continue, meta_model) orelse continue;
+        if (distinct_partial_result_type.eql(distinct_result_type.*)) {
+            distinct_partial_result_type.* = .{ .reference = .{ .name = result_name } };
+        } else {
+            const partial_result_name = try std.fmt.allocPrint(arena, "{s}.PartialResult", .{request.method});
+            try symbols.putNoClobber(gpa, partial_result_name, .{ .decl = .{
+                .type = distinct_partial_result_type.*,
+                .original_name = null,
+                .documentation = null,
+            } });
+            distinct_partial_result_type.* = .{ .reference = .{ .name = partial_result_name } };
+        }
     }
 
     var symbol_tree: SymbolTree = .{};
@@ -821,7 +884,7 @@ fn lookupStructure(meta_model: *const MetaModel, name: []const u8) *const MetaMo
     std.debug.panic("could not resolve reference to '{s}'", .{name});
 }
 
-fn lookupProperty(name: []const u8, meta_model: *MetaModel) *MetaModel.Property {
+fn lookupProperty(name: []const u8, meta_model: *const MetaModel) *MetaModel.Property {
     var name_it: SymbolNamespaceIterator = .init(name, .forward);
     const structure_name = name_it.next().?;
     const first_property_name = name_it.next().?;
@@ -908,67 +971,7 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
 
     try normalizeMetaModel(arena.allocator(), meta_model);
 
-    var original_symbol_names = blk: {
-        var symbols: std.StringArrayHashMapUnmanaged(void) = .empty;
-        errdefer symbols.deinit(gpa);
-        try symbols.ensureTotalCapacity(gpa, meta_model.structures.len + meta_model.enumerations.len + meta_model.typeAliases.len);
-        for (meta_model.structures) |structure| symbols.putAssumeCapacityNoClobber(structure.name, {});
-        for (meta_model.enumerations) |enumeration| symbols.putAssumeCapacityNoClobber(enumeration.name, {});
-        for (meta_model.typeAliases) |type_alias| symbols.putAssumeCapacityNoClobber(type_alias.name, {});
-        break :blk symbols;
-    };
-    defer original_symbol_names.deinit(gpa);
-
-    var type_aliases: std.ArrayList(MetaModel.TypeAlias) = .empty;
-    defer type_aliases.deinit(gpa);
-
-    {
-        try type_aliases.ensureTotalCapacityPrecise(gpa, meta_model.typeAliases.len + config.symbolize.len);
-
-        type_aliases.appendSliceAssumeCapacity(meta_model.typeAliases);
-
-        for (config.symbolize) |property_name| {
-            const expect_optional = std.mem.endsWith(u8, property_name, ".?");
-            const trimmed_property_name = property_name[0 .. property_name.len - @as(usize, if (expect_optional) 2 else 0)];
-            const property = lookupProperty(trimmed_property_name, meta_model);
-
-            if (expect_optional) property.type = unwrapOptional(property.type).?;
-
-            type_aliases.appendAssumeCapacity(.{
-                .name = property_name,
-                .type = property.type,
-                .documentation = property.documentation,
-                .since = property.since,
-                .sinceTags = property.sinceTags,
-                .proposed = property.proposed,
-                .deprecated = property.deprecated,
-            });
-
-            const reference_type: MetaModel.Type = .{ .reference = .{ .name = property_name } };
-            property.type = if (expect_optional) try createOptional(arena.allocator(), reference_type) else reference_type;
-        }
-
-        for (meta_model.requests) |*request| {
-            const distinct_result_type = findInnerDistinctType(&request.result, meta_model) orelse continue;
-
-            const result_name = try std.fmt.allocPrint(arena.allocator(), "{s}.Result", .{request.method});
-            try type_aliases.append(gpa, .{ .name = result_name, .type = distinct_result_type.* });
-            defer distinct_result_type.* = .{ .reference = .{ .name = result_name } };
-
-            const distinct_partial_result_type = findInnerDistinctType(if (request.partialResult) |*ty| ty else continue, meta_model) orelse continue;
-            if (distinct_partial_result_type.eql(distinct_result_type.*)) {
-                distinct_partial_result_type.* = .{ .reference = .{ .name = result_name } };
-            } else {
-                const partial_result_name = try std.fmt.allocPrint(arena.allocator(), "{s}.PartialResult", .{request.method});
-                try type_aliases.append(gpa, .{ .name = partial_result_name, .type = distinct_partial_result_type.* });
-                distinct_partial_result_type.* = .{ .reference = .{ .name = partial_result_name } };
-            }
-        }
-
-        meta_model.typeAliases = type_aliases.items;
-    }
-
-    var symbol_tree = try constructSymbolTree(gpa, meta_model);
+    var symbol_tree = try constructSymbolTree(gpa, arena.allocator(), meta_model);
     defer symbol_tree.deinit(gpa);
 
     var aw: std.Io.Writer.Allocating = .init(gpa);
@@ -992,6 +995,13 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
     }
 
     {
+        var original_symbol_names: std.StringArrayHashMapUnmanaged(void) = .empty;
+        defer original_symbol_names.deinit(gpa);
+        try original_symbol_names.ensureTotalCapacity(gpa, meta_model.structures.len + meta_model.enumerations.len + meta_model.typeAliases.len);
+        for (meta_model.structures) |structure| original_symbol_names.putAssumeCapacityNoClobber(structure.name, {});
+        for (meta_model.enumerations) |enumeration| original_symbol_names.putAssumeCapacityNoClobber(enumeration.name, {});
+        for (meta_model.typeAliases) |type_alias| original_symbol_names.putAssumeCapacityNoClobber(type_alias.name, {});
+
         original_symbol_names.sort(struct {
             names: []const []const u8,
             pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {

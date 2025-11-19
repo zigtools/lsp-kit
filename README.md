@@ -1,6 +1,6 @@
 [![CI](https://github.com/zigtools/lsp-kit/actions/workflows/main.yml/badge.svg)](https://github.com/zigtools/lsp-kit/actions)
 [![codecov](https://codecov.io/gh/zigtools/lsp-kit/graph/badge.svg?token=C3HCN59E4C)](https://codecov.io/gh/zigtools/lsp-kit)
-[![Documentation](https://badgen.net/badge/icon/Docs?icon=wiki&label)](https://zigtools.github.io/lsp-kit)
+[![Documentation](https://img.shields.io/badge/Docs-grey?logo=zig)](https://zigtools.github.io/lsp-kit)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 # Zig LSP Kit

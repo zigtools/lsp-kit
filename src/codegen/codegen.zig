@@ -249,26 +249,36 @@ const SymbolTree = struct {
 
     /// Useful for debugging
     fn dump(tree: *const SymbolTree) error{WriteFailed}!void {
-        const dumpNode = struct {
+        const Landfill = struct {
+            indent_stack: std.bit_set.IntegerBitSet(64) = undefined,
+            indent_stack_size: u8 = 0,
+
             fn dumpNode(
+                l: *@This(),
                 children: std.StringArrayHashMapUnmanaged(Node),
                 writer: *std.Io.Writer,
-                indent: usize,
             ) error{WriteFailed}!void {
                 for (children.keys(), children.values(), 0..) |name, child_node, i| {
                     const is_last = i + 1 == children.count();
-                    try writer.splatBytesAll("│   ", indent);
-                    try writer.print("{s}── {s} {s}\n", .{ @as([]const u8, if (is_last) "└" else "├"), name });
-                    try dumpNode(child_node.children, writer, indent + 1);
+                    for (0..l.indent_stack_size) |indent_index| {
+                        try writer.writeAll(if (l.indent_stack.isSet(indent_index)) "    " else "|   ");
+                    }
+                    try writer.print("{s}── {s}\n", .{ @as([]const u8, if (is_last) "└" else "├"), name });
+
+                    l.indent_stack.setValue(l.indent_stack_size, is_last);
+                    l.indent_stack_size += 1;
+                    defer l.indent_stack_size -= 1;
+                    try l.dumpNode(child_node.children, writer);
                 }
             }
-        }.dumpNode;
+        };
 
         var buffer: [4096]u8 = undefined;
-        const writer = std.debug.lockStderrWriter(&buffer);
+        const writer, _ = std.debug.lockStderrWriter(&buffer);
         defer std.debug.unlockStderrWriter();
 
-        try dumpNode(tree.root, writer, 0);
+        var landfill: Landfill = .{};
+        try landfill.dumpNode(tree.root, writer);
     }
 };
 

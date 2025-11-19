@@ -1,7 +1,7 @@
 const std = @import("std");
 const MetaModel = @import("MetaModel.zig");
 
-pub fn main() !void {
+pub fn main() !u8 {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     defer _ = debug_allocator.deinit();
 
@@ -32,12 +32,14 @@ pub fn main() !void {
     if (zig_tree.errors.len != 0) {
         std.log.warn("generated file contains syntax errors! (cannot format file)", .{});
         try out_file.writeAll(source);
+        return 1;
     } else {
         var buf: [1024]u8 = undefined;
         var out = out_file.writer(&buf);
         const w = &out.interface;
         try zig_tree.render(gpa, w, .{});
         try w.flush();
+        return 0;
     }
 }
 
@@ -294,7 +296,7 @@ const Renderer = struct {
                 if (payload.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
                 if (payload.original_name) |original_name| {
                     if (!std.mem.eql(u8, name, original_name)) {
-                        if (payload.documentation != null) try r.w.writeAll("\n///\n");
+                        if (payload.documentation != null) try r.w.writeAll("///\n");
                         try r.w.print("/// LSP Specification name: `{s}`\n", .{original_name});
                     }
                 }
@@ -305,7 +307,7 @@ const Renderer = struct {
             .structure => |*structure| {
                 if (structure.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
                 if (!std.mem.eql(u8, name, structure.name)) {
-                    if (structure.documentation != null) try r.w.writeAll("\n///\n");
+                    if (structure.documentation != null) try r.w.writeAll("///\n");
                     try r.w.print("/// LSP Specification name: `{s}`\n", .{structure.name});
                 }
 
@@ -325,7 +327,7 @@ const Renderer = struct {
                 };
                 if (enumeration.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
                 if (!std.mem.eql(u8, name, enumeration.name)) {
-                    if (enumeration.documentation != null) try r.w.writeAll("\n///\n");
+                    if (enumeration.documentation != null) try r.w.writeAll("///\n");
                     try r.w.print("/// LSP Specification name: `{s}`\n", .{enumeration.name});
                 }
                 try r.w.print("pub const {f} = {s} {{\n", .{ std.zig.fmtId(name), container_kind });
@@ -582,10 +584,10 @@ const Renderer = struct {
             } else {
                 try r.renderType(property.type, .empty);
             }
+            try r.w.writeAll(" = null");
         } else {
             try r.renderType(property.type, .empty);
         }
-        if (isNullable(property.type)) try r.w.writeAll(" = null");
         try r.w.writeByte(',');
     }
 
@@ -1035,7 +1037,7 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
         for (original_symbol_names.keys()) |name| {
             switch (symbol_map.get(name).?) {
                 .remove => continue,
-                .rename, .replace_with => |new_name| try renderer.w.print("pub const {s} = types.{s};\n", .{ name, new_name }),
+                .rename, .replace_with => |new_name| try renderer.w.print("  pub const {s} = types.{s};\n", .{ name, new_name }),
             }
         }
         try renderer.w.writeAll("};\n\n");
@@ -1052,7 +1054,7 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
         for (meta_model.requests) |request| {
             try renderer.renderRequest(request);
         }
-        try renderer.w.writeAll("\n});");
+        try renderer.w.writeAll("});\n");
     }
 
     return try aw.toOwnedSliceSentinel(0);

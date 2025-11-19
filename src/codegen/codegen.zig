@@ -572,6 +572,7 @@ const Renderer = struct {
     }
 
     fn renderProperty(r: *Renderer, property: MetaModel.Property) error{WriteFailed}!void {
+        std.debug.assert(property.optional == null);
         if (property.documentation) |docs| try r.w.print("{f}", .{fmtDocs(docs, .doc)});
 
         try r.w.print("{f}", .{std.zig.fmtIdPU(property.name)});
@@ -603,6 +604,7 @@ const Renderer = struct {
         var has_properties = false;
 
         skip: for (properties) |property| {
+            std.debug.assert(property.optional == null);
             if (maybe_extender) |ext| {
                 for (ext.properties) |ext_property| {
                     if (std.mem.eql(u8, property.name, ext_property.name)) {
@@ -807,6 +809,7 @@ fn constructSymbolTree(
         const expect_optional = std.mem.endsWith(u8, property_name, ".?");
         const trimmed_property_name = property_name[0 .. property_name.len - @as(usize, if (expect_optional) 2 else 0)];
         const property = lookupProperty(trimmed_property_name, meta_model);
+        std.debug.assert(property.optional == null);
 
         if (expect_optional) property.type = unwrapOptional(property.type).?;
 

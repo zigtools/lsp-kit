@@ -1,6 +1,6 @@
 //! Metamodel schema
 //! specification taken from:
-//! https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/metaModel/metaModel.ts
+//! https://microsoft.github.io/language-server-protocol/specifications/lsp/3.18/metaModel/metaModel.ts
 
 const std = @import("std");
 
@@ -86,6 +86,28 @@ pub const MapKeyType = union(enum) {
     },
     reference: ReferenceType,
 
+    pub fn hash(ty: MapKeyType) u64 {
+        var hasher: std.hash.Wyhash = .init(0);
+        ty.hashWithHasher(&hasher);
+        return hasher.final();
+    }
+
+    pub fn hashWithHasher(ty: MapKeyType, hasher: anytype) void {
+        std.hash.autoHash(hasher, std.meta.activeTag(ty));
+        switch (ty) {
+            .base => |base| std.hash.autoHash(hasher, base.name),
+            .reference => |reference| hasher.update(reference.name),
+        }
+    }
+
+    pub fn eql(a: MapKeyType, b: MapKeyType) bool {
+        if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
+        return switch (a) {
+            .base => a.base.name == b.base.name,
+            .reference => std.mem.eql(u8, a.reference.name, b.reference.name),
+        };
+    }
+
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!@This() {
         const result = try std.json.innerParse(struct {
             kind: []const u8,
@@ -114,9 +136,9 @@ pub const MapKeyType = union(enum) {
         return error.UnexpectedToken;
     }
 
-    pub fn jsonStringify(self: @This(), options: std.json.StringifyOptions, out_stream: anytype) @TypeOf(out_stream.*).Error!void {
-        switch (self) {
-            inline else => |value| try std.json.stringify(value, options, out_stream),
+    pub fn jsonStringify(ty: MapKeyType, jw: *std.json.Stringify) std.json.Stringify.Error!void {
+        switch (ty) {
+            inline else => |value| try jw.write(value),
         }
     }
 };
@@ -191,6 +213,79 @@ pub const Type = union(TypeKind) {
     integerLiteral: IntegerLiteralType,
     booleanLiteral: BooleanLiteralType,
 
+    pub fn hash(ty: Type) u64 {
+        var hasher: std.hash.Wyhash = .init(0);
+        ty.hashWithHasher(&hasher);
+        return hasher.final();
+    }
+
+    pub fn hashWithHasher(ty: Type, hasher: anytype) void {
+        std.hash.autoHash(hasher, @as(TypeKind, ty));
+        switch (ty) {
+            .base => |base| std.hash.autoHash(hasher, base.name),
+            .reference => |reference| hasher.update(reference.name),
+            .array => |array| array.element.hashWithHasher(hasher),
+            .map => |map| {
+                map.key.hashWithHasher(hasher);
+                map.value.hashWithHasher(hasher);
+            },
+            inline .@"and", .@"or", .tuple => |payload| {
+                for (payload.items) |item| {
+                    item.hashWithHasher(hasher);
+                }
+                std.hash.autoHash(hasher, payload.items.len);
+            },
+            .literal => |literal| {
+                for (literal.value.properties) |property| {
+                    property.hashWithHasher(hasher);
+                }
+                std.hash.autoHash(hasher, literal.value.properties.len);
+                // ignores documentation
+                // ignores since
+                // ignores proposed
+                // ignores deprecated
+            },
+            .stringLiteral => |stringLiteral| hasher.update(stringLiteral.value),
+            .integerLiteral => |integerLiteral| std.hash.autoHash(hasher, @as(u64, @bitCast(integerLiteral.value))), // good enough :)
+            .booleanLiteral => |booleanLiteral| std.hash.autoHash(hasher, booleanLiteral.value),
+        }
+    }
+
+    pub fn eql(a: Type, b: Type) bool {
+        if (@as(TypeKind, a) != @as(TypeKind, b)) return false;
+        return switch (a) {
+            .base => a.base.name == b.base.name,
+            .reference => std.mem.eql(u8, a.reference.name, b.reference.name),
+            .array => std.mem.eql(u8, a.array.kind, b.array.kind) and eql(a.array.element.*, b.array.element.*),
+            .map => a.map.key.eql(b.map.key) and eql(a.map.value.*, b.map.value.*),
+            inline .@"and", .@"or", .tuple => |_, tag| {
+                const a_items = @field(a, @tagName(tag)).items;
+                const b_items = @field(b, @tagName(tag)).items;
+                if (a_items.len != b_items.len) return false;
+                for (a_items, b_items) |a_item, b_item| {
+                    if (!eql(a_item, b_item)) return false;
+                }
+                return true;
+            },
+            .literal => {
+                const a_properties = a.literal.value.properties;
+                const b_properties = b.literal.value.properties;
+                if (a_properties.len != b_properties.len) return false;
+                for (a_properties, b_properties) |a_property, b_property| {
+                    if (!a_property.eql(b_property)) return false;
+                }
+                // ignores documentation
+                // ignores since
+                // ignores proposed
+                // ignores deprecated
+                return true;
+            },
+            .stringLiteral => std.mem.eql(u8, a.stringLiteral.value, b.stringLiteral.value),
+            .integerLiteral => a.integerLiteral.value == b.integerLiteral.value,
+            .booleanLiteral => a.booleanLiteral.value == b.booleanLiteral.value,
+        };
+    }
+
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!@This() {
         const json_value = try std.json.innerParse(std.json.Value, allocator, source, options);
         return try jsonParseFromValue(allocator, json_value, options);
@@ -209,9 +304,9 @@ pub const Type = union(TypeKind) {
         return error.UnexpectedToken;
     }
 
-    pub fn jsonStringify(self: @This(), options: std.json.StringifyOptions, out_stream: anytype) @TypeOf(out_stream.*).Error!void {
-        switch (self) {
-            inline else => |value| try std.json.stringify(value, options, out_stream),
+    pub fn jsonStringify(ty: Type, jw: *std.json.Stringify) std.json.Stringify.Error!void {
+        switch (ty) {
+            inline else => |value| try jw.write(value),
         }
     }
 };
@@ -220,12 +315,17 @@ pub const Type = union(TypeKind) {
 pub const Request = struct {
     /// The request's method name.
     method: []const u8,
+    /// The type name of the notifications if any.
+    typeName: ?[]const u8 = null,
+    /// The client capability property path if any.
+    clientCapability: ?[]const u8 = null,
+    /// The server capability property path if any.
+    serverCapability: ?[]const u8 = null,
     /// The parameter type(s) if any.
     params: ?Params = null,
     /// The result type.
     result: Type,
-    /// Optional partial result type if the request
-    /// supports partial result reporting.
+    /// Optional partial result type if the supports partial result reporting.
     partialResult: ?Type = null,
     /// An optional error data type.
     errorData: ?Type = null,
@@ -235,16 +335,15 @@ pub const Request = struct {
     /// Optional registration options if the request
     /// supports dynamic registration.
     registrationOptions: ?Type = null,
-    /// The direction in which this request is sent
-    /// in the protocol.
+    /// The direction in which this request is sent in the protocol.
     messageDirection: MessageDirection,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this request is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this request is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed feature. If omitted
-    /// the feature is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed feature. If omitted, the feature is final.
     proposed: ?bool = null,
     /// Whether the request is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -255,6 +354,12 @@ pub const Request = struct {
 pub const Notification = struct {
     /// The notification's method name.
     method: []const u8,
+    /// The type name of the notifications if any.
+    typeName: ?[]const u8 = null,
+    /// The client capability property path if any.
+    clientCapability: ?[]const u8 = null,
+    /// The server capability property path if any.
+    serverCapability: ?[]const u8 = null,
     /// The parameter type(s) if any.
     params: ?Params = null,
     /// Optional a dynamic registration method if it
@@ -263,16 +368,15 @@ pub const Notification = struct {
     /// Optional registration options if the notification
     /// supports dynamic registration.
     registrationOptions: ?Type = null,
-    /// The direction in which this notification is sent
-    /// in the protocol.
+    /// The direction in which this notification is sent in the protocol.
     messageDirection: MessageDirection,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this notification is
-    /// available. Is null if not known.
+    /// Since when (release number) this notification is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed feature. If omitted
-    /// the feature is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed feature. If omitted, the feature is final.
     proposed: ?bool = null,
     /// Whether the notification is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -280,28 +384,28 @@ pub const Notification = struct {
 };
 
 pub const Params = union(enum) {
-    Type: Type,
-    array_of_Type: []Type,
+    one: Type,
+    multiple: []Type,
 
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!@This() {
         switch (try source.peekNextTokenType()) {
-            .object_begin => return .{ .Type = try std.json.innerParse(Type, allocator, source, options) },
-            .array_begin => return .{ .array_of_Type = try std.json.innerParse([]Type, allocator, source, options) },
+            .object_begin => return .{ .one = try std.json.innerParse(Type, allocator, source, options) },
+            .array_begin => return .{ .multiple = try std.json.innerParse([]Type, allocator, source, options) },
             else => return error.UnexpectedToken,
         }
     }
 
     pub fn jsonParseFromValue(allocator: std.mem.Allocator, source: std.json.Value, options: std.json.ParseOptions) std.json.ParseFromValueError!@This() {
         switch (source) {
-            .object => return .{ .Type = try std.json.parseFromValueLeaky(Type, allocator, source, options) },
-            .array => return .{ .array_of_Type = try std.json.parseFromValueLeaky([]Type, allocator, source, options) },
+            .object => return .{ .one = try std.json.parseFromValueLeaky(Type, allocator, source, options) },
+            .array => return .{ .multiple = try std.json.parseFromValueLeaky([]Type, allocator, source, options) },
             else => return error.UnexpectedToken,
         }
     }
 
-    pub fn jsonStringify(self: @This(), options: std.json.StringifyOptions, out_stream: anytype) @TypeOf(out_stream.*).Error!void {
-        switch (self) {
-            inline else => |value| try std.json.stringify(value, options, out_stream),
+    pub fn jsonStringify(params: Params, jw: *std.json.Stringify) std.json.Stringify.Error!void {
+        switch (params) {
+            inline else => |value| try jw.write(value),
         }
     }
 };
@@ -312,20 +416,46 @@ pub const Property = struct {
     name: []const u8,
     /// The type of the property
     type: Type,
-    /// Whether the property is optional. If
-    /// omitted, the property is mandatory.
+    /// Whether the property is optional. If omitted, the property is mandatory.
     optional: ?bool = null,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this property is
-    /// available. Is null if not known.
+    /// Since when (release number) this property is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed property. If omitted
-    /// the structure is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed property. If omitted, the structure is final.
     proposed: ?bool = null,
     /// Whether the property is deprecated or not. If deprecated
     /// the property contains the deprecation message.
     deprecated: ?[]const u8 = null,
+
+    pub fn hash(property: Property) u64 {
+        var hasher: std.hash.Wyhash = .init(0);
+        property.hashWithHasher(&hasher);
+        return hasher.final();
+    }
+
+    pub fn hashWithHasher(property: Property, hasher: anytype) void {
+        hasher.update(property.name);
+        property.type.hashWithHasher(hasher);
+        std.hash.autoHash(hasher, property.optional);
+        // ignores documentation
+        // ignores since
+        // ignores proposed
+        // ignores deprecated
+    }
+
+    pub fn eql(a: Property, b: Property) bool {
+        if (!std.mem.eql(u8, a.name, b.name)) return false;
+        if (!a.type.eql(b.type)) return false;
+        if (a.optional != b.optional) return false;
+        // ignores documentation
+        // ignores since
+        // ignores proposed
+        // ignores deprecated
+        return true;
+    }
 };
 
 /// Defines the structure of an object literal.
@@ -344,11 +474,11 @@ pub const Structure = struct {
     properties: []Property,
     /// An optional documentation;
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this structure is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this structure is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed structure. If omitted,
-    /// the structure is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed structure. If omitted, the structure is final.
     proposed: ?bool = null,
     /// Whether the structure is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -361,11 +491,11 @@ pub const StructureLiteral = struct {
     properties: []Property,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this structure is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this structure is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed structure. If omitted,
-    /// the structure is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed structure. If omitted, the structure is final.
     proposed: ?bool = null,
     /// Whether the structure is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -381,11 +511,11 @@ pub const TypeAlias = struct {
     type: Type,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this type alias is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this type alias is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed type alias. If omitted,
-    /// the type alias is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed type alias. If omitted, the type alias is final.
     proposed: ?bool = null,
     /// Whether the type alias is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -400,11 +530,11 @@ pub const EnumerationEntry = struct {
     value: Value,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this enumeration entry is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this enumeration entry is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed enumeration entry. If omitted,
-    /// the enumeration entry is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed enumeration entry. If omitted, the enumeration entry is final.
     proposed: ?bool = null,
     /// Whether the enumeration entry is deprecated or not. If deprecated
     /// the property contains the deprecation message.
@@ -430,10 +560,10 @@ pub const EnumerationEntry = struct {
             }
         }
 
-        pub fn jsonStringify(self: @This(), options: std.json.StringifyOptions, out_stream: anytype) @TypeOf(out_stream.*).Error!void {
-            switch (self) {
-                .number => |f| try std.json.stringify(f, options, out_stream),
-                .string => |s| try std.json.stringify(s, options, out_stream),
+        pub fn jsonStringify(value: Value, jw: *std.json.Stringify) std.json.Stringify.Error!void {
+            switch (value) {
+                .number => |f| try jw.write(f),
+                .string => |s| try jw.write(s),
             }
         }
     };
@@ -457,16 +587,15 @@ pub const Enumeration = struct {
     /// The enum values.
     type: EnumerationType,
     /// Whether the enumeration supports custom values (e.g. values which are not
-    /// part of the set defined in `values`). If omitted no custom values are
-    /// supported.
+    /// part of the set defined in `values`). If omitted, no custom values are supported.
     supportsCustomValues: ?bool = null,
     /// An optional documentation.
     documentation: ?[]const u8 = null,
-    /// Since when (release number) this enumeration entry is
-    /// available. Is undefined if not known.
+    /// Since when (release number) this enumeration entry is available. Is null if not known.
     since: ?[]const u8 = null,
-    /// Whether this is a proposed enumeration. If omitted,
-    /// the enumeration is final.
+    /// All since tags in case there was more than one tag. Is null if not known.
+    sinceTags: ?[]const []const u8 = null,
+    /// Whether this is a proposed enumeration. If omitted, the enumeration is final.
     proposed: ?bool = null,
     /// Whether the enumeration is deprecated or not. If deprecated
     /// the property contains the deprecation message.

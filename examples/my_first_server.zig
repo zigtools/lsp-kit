@@ -107,7 +107,7 @@ pub const Handler = struct {
                 .@"utf-32" => .@"utf-32",
             },
             .textDocumentSync = .{
-                .TextDocumentSyncOptions = .{
+                .text_document_sync_options = .{
                     .openClose = true,
                     .change = .Full,
                 },
@@ -163,7 +163,7 @@ pub const Handler = struct {
     pub fn @"textDocument/didOpen"(
         self: *Handler,
         _: std.mem.Allocator,
-        notification: lsp.types.DidOpenTextDocumentParams,
+        notification: lsp.types.TextDocument.DidOpenParams,
     ) !void {
         std.log.debug("Received 'textDocument/didOpen' notification", .{});
 
@@ -187,7 +187,7 @@ pub const Handler = struct {
     pub fn @"textDocument/didChange"(
         self: *Handler,
         _: std.mem.Allocator,
-        notification: lsp.types.DidChangeTextDocumentParams,
+        notification: lsp.types.TextDocument.DidChangeParams,
     ) !void {
         std.log.debug("Received 'textDocument/didChange' notification", .{});
 
@@ -203,11 +203,11 @@ pub const Handler = struct {
 
         for (notification.contentChanges) |content_change| {
             switch (content_change) {
-                .literal_1 => |change| {
+                .text_document_content_change_whole_document => |change| {
                     buffer.clearRetainingCapacity();
                     try buffer.appendSlice(self.allocator, change.text);
                 },
-                .literal_0 => |change| {
+                .text_document_content_change_partial => |change| {
                     const loc = lsp.offsets.rangeToLoc(buffer.items, change.range, self.offset_encoding);
                     try buffer.replaceRange(self.allocator, loc.start, loc.end - loc.start, change.text);
                 },
@@ -223,7 +223,7 @@ pub const Handler = struct {
     pub fn @"textDocument/didClose"(
         self: *Handler,
         _: std.mem.Allocator,
-        notification: lsp.types.DidCloseTextDocumentParams,
+        notification: lsp.types.TextDocument.DidCloseParams,
     ) !void {
         std.log.debug("Received 'textDocument/didClose' notification", .{});
 
@@ -241,7 +241,7 @@ pub const Handler = struct {
     pub fn @"textDocument/hover"(
         handler: *Handler,
         _: std.mem.Allocator,
-        params: lsp.types.HoverParams,
+        params: lsp.types.Hover.Params,
     ) ?lsp.types.Hover {
         std.log.debug("Received 'textDocument/hover' request", .{});
 
@@ -253,7 +253,7 @@ pub const Handler = struct {
 
         return .{
             .contents = .{
-                .MarkupContent = .{
+                .markup_content = .{
                     .kind = .plaintext,
                     .value = "I don't know what you are hovering over but I'd like to point out that you have a nice editor theme",
                 },
@@ -264,8 +264,8 @@ pub const Handler = struct {
     pub fn @"textDocument/completion"(
         _: *Handler,
         arena: std.mem.Allocator,
-        params: lsp.types.CompletionParams,
-    ) error{OutOfMemory}!lsp.ResultType("textDocument/completion") {
+        params: lsp.types.completion.Params,
+    ) error{OutOfMemory}!?lsp.types.completion.Result {
         std.log.debug("Received 'textDocument/completion' notification", .{});
 
         if (params.context) |context| {
@@ -275,7 +275,7 @@ pub const Handler = struct {
             });
         }
 
-        const completions = try arena.dupe(lsp.types.CompletionItem, &.{
+        const completions = try arena.dupe(lsp.types.completion.Item, &.{
             .{
                 .label = "get",
                 .detail = "get the value",
@@ -285,7 +285,7 @@ pub const Handler = struct {
                 .detail = "set the value",
             },
         });
-        return .{ .array_of_CompletionItem = completions };
+        return .{ .completion_items = completions };
     }
 
     /// We received a response message from the client/editor.

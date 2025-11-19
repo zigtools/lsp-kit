@@ -27,7 +27,7 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "lsp-codegen",
         .root_module = b.addModule("lsp-codegen", .{
-            .root_source_file = b.path("src/main.zig"),
+            .root_source_file = b.path("src/codegen/codegen.zig"),
             .target = b.graph.host,
         }),
     });
@@ -61,6 +61,9 @@ pub fn build(b: *std.Build) void {
             .{ .name = "types", .module = lsp_types_module },
         },
     });
+
+    const codegen_step = b.step("codegen", "Install LSP types generated from the meta model");
+    codegen_step.dependOn(&b.addInstallFile(lsp_types_output_file, "lsp_types.zig").step);
 
     // -------------------------------- Autodoc --------------------------------
 

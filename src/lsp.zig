@@ -11,59 +11,7 @@ pub const JsonRPCMessage = union(enum) {
     notification: Notification,
     response: Response,
 
-    pub const ID = union(enum) {
-        number: i64,
-        string: []const u8,
-
-        pub fn eql(a: ID, b: ID) bool {
-            if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
-            switch (a) {
-                .number => return a.number == b.number,
-                .string => return std.mem.eql(u8, a.string, b.string),
-            }
-        }
-
-        test eql {
-            const id_number_3: ID = .{ .number = 3 };
-            const id_number_7: ID = .{ .number = 7 };
-            const id_string_foo: ID = .{ .string = "foo" };
-            const id_string_bar: ID = .{ .string = "bar" };
-            const id_string_3: ID = .{ .string = "3" };
-
-            try std.testing.expect(id_number_3.eql(id_number_3));
-            try std.testing.expect(!id_number_3.eql(id_number_7));
-
-            try std.testing.expect(id_string_foo.eql(id_string_foo));
-            try std.testing.expect(!id_string_foo.eql(id_string_bar));
-
-            try std.testing.expect(!id_number_3.eql(id_string_foo));
-            try std.testing.expect(!id_number_3.eql(id_string_3));
-        }
-
-        pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!ID {
-            switch (try source.peekNextTokenType()) {
-                .number => return .{ .number = try std.json.innerParse(i64, allocator, source, options) },
-                .string => return .{ .string = try std.json.innerParse([]const u8, allocator, source, options) },
-                else => return error.UnexpectedToken,
-            }
-        }
-
-        pub fn jsonParseFromValue(allocator: std.mem.Allocator, source: std.json.Value, options: std.json.ParseOptions) std.json.ParseFromValueError!ID {
-            _ = allocator;
-            _ = options;
-            switch (source) {
-                .integer => |number| return .{ .number = number },
-                .string => |string| return .{ .string = string },
-                else => return error.UnexpectedToken,
-            }
-        }
-
-        pub fn jsonStringify(self: ID, stream: anytype) @TypeOf(stream.*).Error!void {
-            switch (self) {
-                inline else => |value| try stream.write(value),
-            }
-        }
-    };
+    pub const ID = types.ID;
 
     pub const Request = struct {
         comptime jsonrpc: []const u8 = "2.0",
@@ -996,7 +944,7 @@ test TypedJsonRPCResponse {
 
 /// A minimal non-allocating parser for the LSP Base Protocol Header Part.
 ///
-/// See https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#headerPart
+/// See https://microsoft.github.io/language-server-protocol/specifications/specification-current/#headerPart
 pub const BaseProtocolHeader = struct {
     content_length: usize,
 
@@ -1549,7 +1497,7 @@ pub fn bufPrintLogMessage(
     ///
     /// Must be at least `minimum_logging_buffer_size` bytes long.
     buffer: []u8,
-    message_type: types.MessageType,
+    message_type: types.window.MessageType,
     comptime fmt: []const u8,
     args: anytype,
 ) []u8 {
@@ -1567,7 +1515,7 @@ pub fn bufPrintLogMessage(
 
 fn bufPrintLogMessageTypeErased(
     buffer: []u8,
-    message_type: types.MessageType,
+    message_type: types.window.MessageType,
     format_fn: *const fn (*std.Io.Writer, opaque_params: *const anyopaque) std.Io.Writer.Error!void,
     opaque_params: *const anyopaque,
 ) []u8 {
@@ -2306,15 +2254,15 @@ pub fn Message(
 }
 
 const ExampleRequestMethods = union(enum) {
-    @"textDocument/implementation": types.ImplementationParams,
-    @"textDocument/completion": types.CompletionParams,
+    @"textDocument/implementation": types.implementation.Params,
+    @"textDocument/completion": types.completion.Params,
     shutdown,
     other: MethodWithParams,
 };
 
 const ExampleNotificationMethods = union(enum) {
     initialized: types.InitializedParams,
-    @"textDocument/didChange": types.DidChangeTextDocumentParams,
+    @"textDocument/didChange": types.TextDocument.DidChangeParams,
     exit,
     other: MethodWithParams,
 };
@@ -3003,7 +2951,8 @@ test "Message.Response - 'result' and 'error' field" {
 }
 
 pub fn ResultType(comptime method: []const u8) type {
-    if (types.getRequestMetadata(method)) |meta| return meta.Result;
+    @setEvalBranchQuota(10_000);
+    if (types.requests.get(method)) |meta| return meta.Result;
     if (isNotificationMethod(method)) return void;
     @compileError("unknown method '" ++ method ++ "'");
 }
@@ -3016,30 +2965,31 @@ test ResultType {
 }
 
 pub fn ParamsType(comptime method: []const u8) type {
-    if (types.getRequestMetadata(method)) |meta| return meta.Params orelse void;
-    if (types.getNotificationMetadata(method)) |meta| return meta.Params orelse void;
+    @setEvalBranchQuota(10_000);
+    if (types.requests.get(method)) |meta| return meta.Params orelse void;
+    if (types.notifications.get(method)) |meta| return meta.Params orelse void;
     @compileError("unknown method '" ++ method ++ "'");
 }
 
 test ParamsType {
     comptime {
-        std.debug.assert(ParamsType("textDocument/hover") == types.HoverParams);
-        std.debug.assert(ParamsType("textDocument/inlayHint") == types.InlayHintParams);
+        std.debug.assert(ParamsType("textDocument/hover") == types.Hover.Params);
+        std.debug.assert(ParamsType("textDocument/inlayHint") == types.InlayHint.Params);
     }
 }
 
 const request_method_set: std.StaticStringMap(void) = blk: {
-    var kvs_list: [types.request_metadata.len]struct { []const u8 } = undefined;
-    for (types.request_metadata, &kvs_list) |meta, *kv| {
-        kv.* = .{meta.method};
+    var kvs_list: [types.requests.keys().len]struct { []const u8 } = undefined;
+    for (types.requests.keys(), &kvs_list) |method, *kv| {
+        kv.* = .{method};
     }
     break :blk .initComptime(kvs_list);
 };
 
 const notification_method_set: std.StaticStringMap(void) = blk: {
-    var kvs_list: [types.notification_metadata.len]struct { []const u8 } = undefined;
-    for (types.notification_metadata, &kvs_list) |meta, *kv| {
-        kv.* = .{meta.method};
+    var kvs_list: [types.notifications.keys().len]struct { []const u8 } = undefined;
+    for (types.notifications.keys(), &kvs_list) |method, *kv| {
+        kv.* = .{method};
     }
     break :blk .initComptime(kvs_list);
 };
@@ -3077,6 +3027,7 @@ test isNotificationMethod {
 }
 
 comptime {
-    @setEvalBranchQuota(10_000);
-    std.testing.refAllDeclsRecursive(@This());
+    _ = &types;
+    _ = &parser;
+    _ = &offsets;
 }

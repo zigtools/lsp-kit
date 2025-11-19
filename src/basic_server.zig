@@ -228,7 +228,7 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
 
     if (capabilities.textDocumentSync) |text_document_sync| {
         switch (text_document_sync) {
-            .TextDocumentSyncOptions => |options| {
+            .text_document_sync_options => |options| {
                 if (options.openClose orelse false) text_document_did_open = .allowed;
                 if (options.openClose orelse false) text_document_did_close = .allowed;
                 switch (options.change orelse .None) {
@@ -241,10 +241,10 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
                     .bool => |b| if (b) {
                         text_document_did_save = .expected;
                     },
-                    .SaveOptions => text_document_did_save = .expected,
+                    .save_options => text_document_did_save = .expected,
                 };
             },
-            .TextDocumentSyncKind => |sync_kind| switch (sync_kind) {
+            .text_document_sync_kind => |sync_kind| switch (sync_kind) {
                 else => {
                     text_document_did_open = .allowed;
                     text_document_did_close = .allowed;
@@ -275,7 +275,7 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
         notebook_document_did_save = .allowed;
         notebook_document_did_close = .allowed;
         switch (notebook_document_sync) {
-            inline .NotebookDocumentSyncOptions, .NotebookDocumentSyncRegistrationOptions => |options| {
+            inline .notebook_document_sync_options, .notebook_document_sync_registration_options => |options| {
                 notebook_document_did_save = if (options.save orelse false) .expected else .disabled;
             },
         }
@@ -285,49 +285,49 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
 
     const hover: Status = if (capabilities.hoverProvider) |hover| switch (hover) {
         .bool => |b| if (b) .expected else .disabled,
-        .HoverOptions => .expected,
+        .hover_options => .expected,
     } else .disabled;
 
     const signature_help: Status = if (capabilities.signatureHelpProvider != null) .expected else .disabled;
 
     const declaration: Status = if (capabilities.declarationProvider) |declaration| switch (declaration) {
         .bool => |b| if (b) .expected else .disabled,
-        .DeclarationOptions, .DeclarationRegistrationOptions => .expected,
+        .declaration_options, .declaration_registration_options => .expected,
     } else .disabled;
 
     const definition: Status = if (capabilities.definitionProvider) |definition| switch (definition) {
         .bool => |b| if (b) .expected else .disabled,
-        .DefinitionOptions => .expected,
+        .definition_options => .expected,
     } else .disabled;
 
     const type_definition: Status = if (capabilities.typeDefinitionProvider) |type_definition| switch (type_definition) {
         .bool => |b| if (b) .expected else .disabled,
-        .TypeDefinitionOptions, .TypeDefinitionRegistrationOptions => .expected,
+        .type_definition_options, .type_definition_registration_options => .expected,
     } else .disabled;
 
     const implementation: Status = if (capabilities.implementationProvider) |implementation| switch (implementation) {
         .bool => |b| if (b) .expected else .disabled,
-        .ImplementationOptions, .ImplementationRegistrationOptions => .expected,
+        .implementation_options, .implementation_registration_options => .expected,
     } else .disabled;
 
     const references: Status = if (capabilities.referencesProvider) |references| switch (references) {
         .bool => |b| if (b) .expected else .disabled,
-        .ReferenceOptions => .expected,
+        .reference_options => .expected,
     } else .disabled;
 
     const document_highlight: Status = if (capabilities.documentHighlightProvider) |document_highlight| switch (document_highlight) {
         .bool => |b| if (b) .expected else .disabled,
-        .DocumentHighlightOptions => .expected,
+        .document_highlight_options => .expected,
     } else .disabled;
 
     const document_symbol: Status = if (capabilities.documentSymbolProvider) |document_symbol| switch (document_symbol) {
         .bool => |b| if (b) .expected else .disabled,
-        .DocumentSymbolOptions => .expected,
+        .document_symbol_options => .expected,
     } else .disabled;
 
     const code_action: Status = if (capabilities.codeActionProvider) |code_action| switch (code_action) {
         .bool => |b| if (b) .expected else .disabled,
-        .CodeActionOptions => .expected,
+        .code_action_options => .expected,
     } else .disabled;
 
     const code_lens: Status, const codeLensResolve: Status = if (capabilities.codeLensProvider) |code_lens| .{
@@ -342,7 +342,7 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
 
     const document_color: Status = if (capabilities.colorProvider) |color| switch (color) {
         .bool => |b| if (b) .expected else .disabled,
-        .DocumentColorOptions, .DocumentColorRegistrationOptions => .expected,
+        .document_color_options, .document_color_registration_options => .expected,
     } else .disabled;
 
     const workspace_symbol: Status, const workspace_symbol_resolve: Status = if (capabilities.workspaceSymbolProvider) |workspace_symbol| switch (workspace_symbol) {
@@ -350,7 +350,7 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
             if (b) .expected else .disabled,
             .disabled,
         },
-        .WorkspaceSymbolOptions => |options| .{
+        .workspace_symbol_options => |options| .{
             .expected,
             if (options.resolveProvider orelse false) .expected else .disabled,
         },
@@ -358,29 +358,29 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
 
     const formatting: Status = if (capabilities.documentFormattingProvider) |document_formatting| switch (document_formatting) {
         .bool => |b| if (b) .expected else .disabled,
-        .DocumentFormattingOptions => .expected,
+        .document_formatting_options => .expected,
     } else .disabled;
 
     const range_formatting: Status = if (capabilities.documentRangeFormattingProvider) |document_range_formatting| switch (document_range_formatting) {
         .bool => |b| if (b) .expected else .disabled,
-        .DocumentRangeFormattingOptions => .expected,
+        .document_range_formatting_options => .expected,
     } else .disabled;
 
     const on_type_formatting: Status = if (capabilities.documentOnTypeFormattingProvider != null) .expected else .disabled;
 
     const rename: Status = if (capabilities.renameProvider) |rename| switch (rename) {
         .bool => |b| if (b) .expected else .disabled,
-        .RenameOptions => .expected,
+        .rename_options => .expected,
     } else .disabled;
 
     const folding_range: Status = if (capabilities.foldingRangeProvider) |folding_range| switch (folding_range) {
         .bool => |b| if (b) .expected else .disabled,
-        .FoldingRangeOptions, .FoldingRangeRegistrationOptions => .expected,
+        .folding_range_options, .folding_range_registration_options => .expected,
     } else .disabled;
 
     const selection_range: Status = if (capabilities.selectionRangeProvider) |selection_range| switch (selection_range) {
         .bool => |b| if (b) .expected else .disabled,
-        .SelectionRangeOptions, .SelectionRangeRegistrationOptions => .expected,
+        .selection_range_options, .selection_range_registration_options => .expected,
     } else .disabled;
 
     const workspace_execute_command: Status = if (capabilities.executeCommandProvider != null) .expected else .disabled;
@@ -394,7 +394,7 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
             call_hierarchy_incomingCalls = .expected;
             call_hierarchy_outgoing_calls = .expected;
         },
-        .CallHierarchyOptions, .CallHierarchyRegistrationOptions => {
+        .call_hierarchy_options, .call_hierarchy_registration_options => {
             prepare_call_hierarchy = .expected;
             call_hierarchy_incomingCalls = .expected;
             call_hierarchy_outgoing_calls = .expected;
@@ -403,7 +403,7 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
 
     const linked_editing_range: Status = if (capabilities.linkedEditingRangeProvider) |linked_editing_range| switch (linked_editing_range) {
         .bool => |b| if (b) .expected else .disabled,
-        .LinkedEditingRangeOptions, .LinkedEditingRangeRegistrationOptions => .expected,
+        .linked_editing_range_options, .linked_editing_range_registration_options => .expected,
     } else .disabled;
 
     var semantic_tokens_range: Status = .disabled;
@@ -420,7 +420,7 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
                     if (b) .expected else .disabled,
                     .disabled,
                 },
-                .literal_1 => |full_options| .{
+                .semantic_tokens_full_delta => |full_options| .{
                     .expected,
                     if (full_options.delta orelse false) .expected else .disabled,
                 },
@@ -430,22 +430,22 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
 
     const moniker: Status = if (capabilities.monikerProvider) |moniker| switch (moniker) {
         .bool => |b| if (b) .expected else .disabled,
-        .MonikerOptions, .MonikerRegistrationOptions => .expected,
+        .moniker_options, .moniker_registration_options => .expected,
     } else .disabled;
 
     const type_hierarchy: Status = if (capabilities.typeHierarchyProvider) |type_hierarchy| switch (type_hierarchy) {
         .bool => |b| if (b) .expected else .disabled,
-        .TypeHierarchyOptions, .TypeHierarchyRegistrationOptions => .expected,
+        .type_hierarchy_options, .type_hierarchy_registration_options => .expected,
     } else .disabled;
 
     const inline_value: Status = if (capabilities.inlineValueProvider) |inline_value| switch (inline_value) {
         .bool => |b| if (b) .expected else .disabled,
-        .InlineValueOptions, .InlineValueRegistrationOptions => .expected,
+        .inline_value_options, .inline_value_registration_options => .expected,
     } else .disabled;
 
     const inlay_hint: Status, const inlay_hint_resolve: Status = if (capabilities.inlayHintProvider) |inlay_hint| switch (inlay_hint) {
         .bool => |b| if (b) .{ .expected, .expected } else .{ .disabled, .disabled },
-        inline .InlayHintOptions, .InlayHintRegistrationOptions => |options| .{
+        inline .inlay_hint_options, .inlay_hint_registration_options => |options| .{
             .expected,
             if (options.resolveProvider orelse false) .expected else .disabled,
         },
@@ -455,7 +455,7 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
 
     const inline_completion: Status = if (capabilities.inlineCompletionProvider) |inline_completion| switch (inline_completion) {
         .bool => |b| if (b) .expected else .disabled,
-        .InlineCompletionOptions => .expected,
+        .inline_completion_options => .expected,
     } else .disabled;
 
     inline for ([_][]const u8{

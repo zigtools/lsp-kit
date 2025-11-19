@@ -1,3 +1,5 @@
+//! This program is executed from the build system to generate type bindings for the LSP specification.
+
 const std = @import("std");
 const MetaModel = @import("MetaModel.zig");
 
@@ -1065,11 +1067,17 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
 
 const Config = struct {
     symbols: []const struct { []const u8, Action },
+    /// List of expressions that should be refactored i.e symbolized into a new
+    /// declaration to avoid generating anonymous types.
+    /// The new name of the declaration will be looked up in `symbols`.
     symbolize: []const []const u8,
 
     const Action = union(enum) {
+        /// Remove the given symbol.
         remove,
+        /// Rename a symbol to the given name.
         rename: []const u8,
+        /// Replace every reference of a symbol with a different one.
         replace_with: []const u8,
     };
 };

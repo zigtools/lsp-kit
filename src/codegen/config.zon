@@ -92,7 +92,7 @@
         .{"DidCloseNotebookDocumentParams",             .{ .rename = "NotebookDocument.DidCloseParams" } },
         .{"DidOpenNotebookDocumentParams",              .{ .rename = "NotebookDocument.DidOpenParams" } },
         .{"DidSaveNotebookDocumentParams",              .{ .rename = "NotebookDocument.DidSaveParams" } },
-        
+
         .{"NotebookCell",                               .{ .rename = "NotebookCell" } },
         .{"NotebookCellArrayChange",                    .{ .rename = "NotebookCell.ArrayChange" } },
         .{"ExecutionSummary",                           .{ .rename = "NotebookCell.ExecutionSummary" } },

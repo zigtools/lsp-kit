@@ -588,7 +588,7 @@ pub fn validateServerCapabilities(comptime Handler: type, capabilities: types.Se
                         \\    arena: std.mem.Allocator,
                         \\    params: {},
                         \\) {} {{}}
-                        \\ 
+                        \\
                     , .{
                         std.zig.fmtId(method_name),
                         Handler,
@@ -610,38 +610,44 @@ fn MessageType(comptime Handler: type) type {
         &.{ lsp.isRequestMethod, lsp.isNotificationMethod },
         &.{ &RequestParams, &NotificationParams },
     ) |isMethod, Params| {
-        var methods: []const [:0]const u8 = &.{};
+        var methods: []const []const u8 = &.{};
 
         for (std.meta.declarations(Handler)) |decl| {
             if (isMethod(decl.name)) {
-                methods = methods ++ [1][:0]const u8{decl.name};
+                methods = methods ++ [_][]const u8{decl.name};
             }
         }
+        methods = methods ++ [_][]const u8{"other"};
 
-        var enum_fields: [methods.len + 1]std.builtin.Type.EnumField = undefined;
-        for (enum_fields[0 .. enum_fields.len - 1], methods, 0..) |*field, method, i| field.* = .{ .name = method, .value = i };
-        enum_fields[methods.len] = .{ .name = "other", .value = methods.len };
-
-        const MethodEnum = @Type(.{ .@"enum" = .{
-            .tag_type = std.math.IntFittingRange(0, methods.len),
-            .fields = &enum_fields,
-            .decls = &.{},
-            .is_exhaustive = true,
-        } });
-
-        var union_fields: [methods.len + 1]std.builtin.Type.UnionField = undefined;
-        for (union_fields[0 .. union_fields.len - 1], methods) |*field, method| {
-            const field_type = lsp.ParamsType(method);
-            field.* = .{ .name = method, .type = field_type, .alignment = @alignOf(field_type) };
+        const MethodTag = std.math.IntFittingRange(0, methods.len);
+        var method_values: [methods.len]MethodTag = undefined;
+        for (0..methods.len) |i| {
+            method_values[i] = i;
         }
-        union_fields[methods.len] = .{ .name = "other", .type = lsp.MethodWithParams, .alignment = @alignOf(lsp.MethodWithParams) };
 
-        Params.* = @Type(.{ .@"union" = .{
-            .layout = .auto,
-            .tag_type = MethodEnum,
-            .fields = &union_fields,
-            .decls = &.{},
-        } });
+        const MethodEnum = @Enum(
+            MethodTag,
+            .exhaustive,
+            methods,
+            &method_values,
+        );
+
+        var union_types: [methods.len]type = undefined;
+        var union_attrs: [methods.len]std.builtin.Type.UnionField.Attributes = undefined;
+        for (0..methods.len - 1) |i| {
+            union_types[i] = lsp.ParamsType(methods[i]);
+            union_attrs[i] = .{ .@"align" = @alignOf(union_types[i]) };
+        }
+        union_types[methods.len - 1] = lsp.MethodWithParams;
+        union_attrs[methods.len - 1] = .{ .@"align" = @alignOf(lsp.MethodWithParams) };
+
+        Params.* = @Union(
+            .auto,
+            MethodEnum,
+            methods,
+            &union_types,
+            &union_attrs,
+        );
     }
 
     return lsp.Message(RequestParams, NotificationParams, .{});

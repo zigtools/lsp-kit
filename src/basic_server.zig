@@ -618,30 +618,14 @@ fn MessageType(comptime Handler: type) type {
             }
         }
 
-        var enum_fields: [methods.len + 1]std.builtin.Type.EnumField = undefined;
-        for (enum_fields[0 .. enum_fields.len - 1], methods, 0..) |*field, method, i| field.* = .{ .name = method, .value = i };
-        enum_fields[methods.len] = .{ .name = "other", .value = methods.len };
+        const field_names: []const []const u8 = methods ++ .{"other"};
+        var field_types: [methods.len + 1]type = undefined;
+        for (field_types[0 .. field_types.len - 1], methods) |*ty, method| ty.* = lsp.ParamsType(method);
+        field_types[methods.len] = lsp.MethodWithParams;
 
-        const MethodEnum = @Type(.{ .@"enum" = .{
-            .tag_type = std.math.IntFittingRange(0, methods.len),
-            .fields = &enum_fields,
-            .decls = &.{},
-            .is_exhaustive = true,
-        } });
-
-        var union_fields: [methods.len + 1]std.builtin.Type.UnionField = undefined;
-        for (union_fields[0 .. union_fields.len - 1], methods) |*field, method| {
-            const field_type = lsp.ParamsType(method);
-            field.* = .{ .name = method, .type = field_type, .alignment = @alignOf(field_type) };
-        }
-        union_fields[methods.len] = .{ .name = "other", .type = lsp.MethodWithParams, .alignment = @alignOf(lsp.MethodWithParams) };
-
-        Params.* = @Type(.{ .@"union" = .{
-            .layout = .auto,
-            .tag_type = MethodEnum,
-            .fields = &union_fields,
-            .decls = &.{},
-        } });
+        const IntTag = std.math.IntFittingRange(0, methods.len);
+        const MethodEnum = @Enum(IntTag, .exhaustive, field_names, &std.simd.iota(IntTag, methods.len + 1));
+        Params.* = @Union(.auto, MethodEnum, field_names, &field_types, &@splat(.{}));
     }
 
     return lsp.Message(RequestParams, NotificationParams, .{});

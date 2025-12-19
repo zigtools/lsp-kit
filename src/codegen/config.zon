@@ -161,7 +161,7 @@
         .{"CodeActionClientCapabilities",               .{ .rename = "ClientCapabilities.TextDocument.CodeAction" } },
         .{"ClientCodeActionLiteralOptions",             .{ .rename = "ClientCapabilities.TextDocument.CodeAction.LiteralOptions" } },
         .{"ClientCodeActionKindOptions",                .{ .rename = "ClientCapabilities.TextDocument.CodeAction.KindOptions" } },
-        .{ "ClientCodeActionResolveOptions",            .{ .rename = "ClientCapabilities.TextDocument.CodeAction.ResolveOptions"  } },
+        .{"ClientCodeActionResolveOptions",             .{ .rename = "ClientCapabilities.TextDocument.CodeAction.ResolveOptions" } },
         .{"CodeActionTagOptions",                       .{ .rename = "ClientCapabilities.TextDocument.CodeAction.TagOptions" } },
         .{"CodeLensClientCapabilities",                 .{ .rename = "ClientCapabilities.TextDocument.CodeLens" } },
         .{"ClientCodeLensResolveOptions",               .{ .rename = "ClientCapabilities.TextDocument.CodeLens.ResolveOptions" } },
@@ -259,8 +259,8 @@
         // textDocument/prepareRename
         .{"PrepareRenameParams",                        .{ .rename = "prepare_rename.Params" } },
         .{"PrepareRenameResult",                        .{ .rename = "prepare_rename.Result" } },
-        .{"PrepareRenameDefaultBehavior",               .{ .rename = "prepare_rename.DefaultBehavior"  } },
-        .{"PrepareRenamePlaceholder",                   .{ .rename = "prepare_rename.Placeholder"  } },
+        .{"PrepareRenameDefaultBehavior",               .{ .rename = "prepare_rename.DefaultBehavior" } },
+        .{"PrepareRenamePlaceholder",                   .{ .rename = "prepare_rename.Placeholder" } },
 
         .{"RenameParams",                               .{ .rename = "rename.Params" } },
         .{"RenameOptions",                              .{ .rename = "rename.Options" } },

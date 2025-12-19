@@ -1342,8 +1342,7 @@ pub fn writeRequest(
 }
 
 test writeRequest {
-    var buffer: std.ArrayListUnmanaged(u8) = .empty;
-    var aw: std.Io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer aw.deinit();
 
     try writeRequest(
@@ -1384,8 +1383,7 @@ pub fn writeNotification(
 }
 
 test writeNotification {
-    var buffer: std.ArrayListUnmanaged(u8) = .empty;
-    var aw: std.Io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer aw.deinit();
 
     try writeNotification(
@@ -1424,8 +1422,7 @@ pub fn writeResponse(
 }
 
 test writeResponse {
-    var buffer: std.ArrayListUnmanaged(u8) = .empty;
-    var aw: std.Io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer aw.deinit();
 
     try writeResponse(
@@ -1463,8 +1460,7 @@ pub fn writeErrorResponse(
 }
 
 test writeErrorResponse {
-    var buffer: std.ArrayListUnmanaged(u8) = .empty;
-    var aw: std.Io.Writer.Allocating = .fromArrayList(std.testing.allocator, &buffer);
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer aw.deinit();
 
     try writeErrorResponse(

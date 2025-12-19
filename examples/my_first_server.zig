@@ -5,7 +5,6 @@ const builtin = @import("builtin");
 const lsp = @import("lsp");
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-var log_transport: ?lsp.AnyTransport = null;
 
 pub fn main() !void {
     const gpa, const is_debug = switch (builtin.mode) {
@@ -18,7 +17,7 @@ pub fn main() !void {
 
     var threaded: std.Io.Threaded = .init(gpa);
     defer threaded.deinit();
-    const io = threaded.io();
+    const io = threaded.ioBasic();
 
     // LSP implementations typically communicate over stdio (stdin and stdout)
     var read_buffer: [256]u8 = undefined;
@@ -196,7 +195,7 @@ pub const Handler = struct {
             return;
         };
 
-        var buffer: std.ArrayListUnmanaged(u8) = .empty;
+        var buffer: std.ArrayList(u8) = .empty;
         errdefer buffer.deinit(self.allocator);
 
         try buffer.appendSlice(self.allocator, current_text.*);

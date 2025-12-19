@@ -43,7 +43,7 @@ pub fn main() !void {
 
     var threaded: std.Io.Threaded = .init(gpa);
     defer threaded.deinit();
-    const io = threaded.io();
+    const io = threaded.ioBasic();
 
     // Language servers can support multiple communication channels (e.g. stdio, pipes, sockets).
     // See https://microsoft.github.io/language-server-protocol/specifications/specification-current/#implementationConsiderations

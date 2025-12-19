@@ -59,7 +59,7 @@ pub fn main() !void {
 
     var threaded: std.Io.Threaded = .init(gpa);
     defer threaded.deinit();
-    const io = threaded.io();
+    const io = threaded.ioBasic();
 
     const args = try std.process.argsAlloc(gpa);
     defer std.process.argsFree(gpa, args);

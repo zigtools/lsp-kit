@@ -1101,6 +1101,7 @@ pub const Transport = struct {
 
         pub fn init(
             io: std.Io,
+            /// See `BaseProtocolHeader.parse`
             read_buffer: []u8,
             read_from: std.Io.File,
             write_to: std.fs.File,
@@ -1834,7 +1835,7 @@ pub fn Message(
             \\    \\}
             \\;
             \\
-            \\const Message = lsp.Message(.{ ... });
+            \\const Message = lsp.Message(RequestParams, NotificationParams, .{});
             \\const lsp_message = try Message.jsonParseFromSlice(allocator, json_message, .{});
             \\
         );

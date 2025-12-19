@@ -109,7 +109,7 @@ pub const Handler = struct {
             .textDocumentSync = .{
                 .text_document_sync_options = .{
                     .openClose = true,
-                    .change = .Full,
+                    .change = .Incremental,
                 },
             },
             .hoverProvider = .{ .bool = true },

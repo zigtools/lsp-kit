@@ -29,6 +29,7 @@ pub fn build(b: *std.Build) void {
         .root_module = b.addModule("lsp-codegen", .{
             .root_source_file = b.path("src/codegen/codegen.zig"),
             .target = b.graph.host,
+            .single_threaded = true,
         }),
     });
     // The metaModel.json file should be removed once https://github.com/ziglang/zig/issues/17895 has been resolved.

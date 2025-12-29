@@ -1089,22 +1089,22 @@ pub const Transport = struct {
         writeJsonMessage: *const fn (transport: *Transport, json_message: []const u8) WriteError!void,
     };
 
-    pub const ReadError = std.posix.ReadError || error{EndOfStream} || BaseProtocolHeader.ParseError || std.mem.Allocator.Error;
-    pub const WriteError = std.posix.WriteError;
+    pub const ReadError = std.Io.File.Reader.Error || error{EndOfStream} || BaseProtocolHeader.ParseError || std.mem.Allocator.Error;
+    pub const WriteError = std.Io.File.Writer.Error;
 
     pub const Stdio = struct {
         transport: Transport,
         io: std.Io,
         reader: std.Io.Reader,
         read_from: std.Io.File,
-        write_to: std.fs.File,
+        write_to: std.Io.File,
 
         pub fn init(
             io: std.Io,
             /// See `BaseProtocolHeader.parse`
             read_buffer: []u8,
             read_from: std.Io.File,
-            write_to: std.fs.File,
+            write_to: std.Io.File,
         ) Stdio {
             return .{
                 .transport = .{
@@ -1122,12 +1122,8 @@ pub const Transport = struct {
 
         fn readJsonMessage(transport: *Transport, allocator: std.mem.Allocator) ReadError![]u8 {
             const stdio: *Stdio = @fieldParentPtr("transport", transport);
-            var file_reader: std.Io.File.Reader = .{
-                .io = stdio.io,
-                .file = stdio.read_from,
-                .mode = .streaming_reading,
-                .interface = stdio.reader,
-            };
+            var file_reader: std.Io.File.Reader = .initStreaming(stdio.read_from, stdio.io, stdio.reader.buffer);
+            file_reader.interface = stdio.reader;
             defer stdio.reader = file_reader.interface;
             return lsp.readJsonMessage(&file_reader.interface, allocator) catch |err| switch (err) {
                 error.ReadFailed => return file_reader.err.?,
@@ -1137,8 +1133,8 @@ pub const Transport = struct {
 
         fn writeJsonMessage(transport: *Transport, json_message: []const u8) WriteError!void {
             const stdio: *Stdio = @fieldParentPtr("transport", transport);
-            var file_writer: std.fs.File.Writer = .initStreaming(stdio.write_to, &.{});
-            return lsp.writeJsonMessage(&file_writer.interface, json_message) catch |err| switch (err) {
+            var file_writer: std.Io.File.Writer = .initStreaming(stdio.write_to, stdio.io, &.{});
+            lsp.writeJsonMessage(&file_writer.interface, json_message) catch |err| switch (err) {
                 error.WriteFailed => return file_writer.err.?,
             };
         }

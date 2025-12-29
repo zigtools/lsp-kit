@@ -41,7 +41,7 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
-    var threaded: std.Io.Threaded = .init(gpa);
+    var threaded: std.Io.Threaded = .init(gpa, .{});
     defer threaded.deinit();
     const io = threaded.ioBasic();
 

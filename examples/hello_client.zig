@@ -57,7 +57,7 @@ pub fn main() !void {
         _ = debug_allocator.deinit();
     };
 
-    var threaded: std.Io.Threaded = .init(gpa);
+    var threaded: std.Io.Threaded = .init(gpa, .{});
     defer threaded.deinit();
     const io = threaded.ioBasic();
 
@@ -66,10 +66,7 @@ pub fn main() !void {
 
     if (args.len < 3) fatalWithUsage("expected at least 2 arguments but got {d}", .{args.len - 1});
 
-    const input_file = (if (@hasDecl(std, "io"))
-        std.fs.cwd().readFileAlloc(gpa, args[1], std.math.maxInt(u32))
-    else
-        std.fs.cwd().readFileAlloc(args[1], gpa, .limited(std.math.maxInt(u32)))) catch |err|
+    const input_file = std.Io.Dir.cwd().readFileAlloc(io, args[1], gpa, .limited(std.math.maxInt(u32))) catch |err|
         fatal("failed to read file '{s}': {}", .{ args[1], err });
     defer gpa.free(input_file);
 
@@ -79,7 +76,7 @@ pub fn main() !void {
     child_process.stdout_behavior = .Pipe;
     child_process.stderr_behavior = if (show_langauge_server_stderr) .Inherit else .Ignore;
 
-    child_process.spawn() catch |err| fatal("child process could not be created: {}", .{err});
+    child_process.spawn(io) catch |err| fatal("child process could not be created: {}", .{err});
     child_process.waitForSpawn() catch |err| fatal("child process could not be created: {}", .{err});
 
     // Language servers can support multiple communication channels (e.g. stdio, pipes, sockets).
@@ -211,14 +208,14 @@ pub fn main() !void {
     );
 
     // The "exit" notification will ask the server to exit its process. Ideally we should wait with a timeout in case the server is not behaving correctly.
-    _ = try child_process.wait();
+    _ = try child_process.wait(io);
 }
 
 fn fatalWithUsage(comptime format: []const u8, args: anytype) noreturn {
     {
-        const stderr, _ = std.debug.lockStderrWriter(&.{});
-        defer std.debug.unlockStderrWriter();
-        stderr.writeAll(usage) catch {};
+        const stderr = std.debug.lockStderr(&.{}).terminal();
+        defer std.debug.unlockStderr();
+        stderr.writer.writeAll(usage) catch {};
     }
     std.log.err(format, args);
     std.process.exit(1);

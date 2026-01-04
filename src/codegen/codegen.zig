@@ -3,7 +3,7 @@
 const std = @import("std");
 const MetaModel = @import("MetaModel.zig");
 
-pub fn main() !u8 {
+pub fn main(init: std.process.Init.Minimal) !u8 {
     var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
     defer _ = debug_allocator.deinit();
 
@@ -12,7 +12,7 @@ pub fn main() !u8 {
     var threaded: std.Io.Threaded = .init_single_threaded;
     const io = threaded.ioBasic();
 
-    var arg_it: std.process.ArgIterator = try .initWithAllocator(gpa);
+    var arg_it = try init.args.iterateAllocator(gpa);
     defer arg_it.deinit();
 
     _ = arg_it.skip(); // skip self exe

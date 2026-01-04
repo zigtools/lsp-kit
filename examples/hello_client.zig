@@ -46,23 +46,11 @@ const usage =
     \\
 ;
 
-var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-
-pub fn main() !void {
-    const gpa, const is_debug = switch (builtin.mode) {
-        .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
-        .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
-    };
-    defer if (is_debug) {
-        _ = debug_allocator.deinit();
-    };
-
-    var threaded: std.Io.Threaded = .init(gpa, .{});
-    defer threaded.deinit();
-    const io = threaded.ioBasic();
-
-    const args = try std.process.argsAlloc(gpa);
-    defer std.process.argsFree(gpa, args);
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    const gpa = init.gpa;
+    const arena = init.arena.allocator();
+    const args = try init.minimal.args.toSlice(arena);
 
     if (args.len < 3) fatalWithUsage("expected at least 2 arguments but got {d}", .{args.len - 1});
 
@@ -71,13 +59,12 @@ pub fn main() !void {
     defer gpa.free(input_file);
 
     // Spawn the language server as a child process.
-    var child_process: std.process.Child = .init(args[2..], gpa);
-    child_process.stdin_behavior = .Pipe;
-    child_process.stdout_behavior = .Pipe;
-    child_process.stderr_behavior = if (show_langauge_server_stderr) .Inherit else .Ignore;
-
-    child_process.spawn(io) catch |err| fatal("child process could not be created: {}", .{err});
-    child_process.waitForSpawn() catch |err| fatal("child process could not be created: {}", .{err});
+    var child_process = std.process.spawn(io, .{
+        .argv = args[2..],
+        .stdin = .pipe,
+        .stdout = .pipe,
+        .stderr = .pipe,
+    }) catch |err| fatal("child process could not be created: {}", .{err});
 
     // Language servers can support multiple communication channels (e.g. stdio, pipes, sockets).
     // See https://microsoft.github.io/language-server-protocol/specifications/specification-current/#implementationConsiderations

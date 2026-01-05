@@ -63,7 +63,7 @@ pub fn main(init: std.process.Init) !void {
         .argv = args[2..],
         .stdin = .pipe,
         .stdout = .pipe,
-        .stderr = .pipe,
+        .stderr = if (show_langauge_server_stderr) .inherit else .ignore,
     }) catch |err| fatal("child process could not be created: {}", .{err});
 
     // Language servers can support multiple communication channels (e.g. stdio, pipes, sockets).

@@ -4,33 +4,19 @@ const std = @import("std");
 const builtin = @import("builtin");
 const lsp = @import("lsp");
 
-var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-
-pub fn main() !void {
-    const gpa, const is_debug = switch (builtin.mode) {
-        .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
-        .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
-    };
-    defer if (is_debug) {
-        _ = debug_allocator.deinit();
-    };
-
-    var threaded: std.Io.Threaded = .init(gpa, .{});
-    defer threaded.deinit();
-    const io = threaded.ioBasic();
-
+pub fn main(init: std.process.Init) !void {
     // LSP implementations typically communicate over stdio (stdin and stdout)
     var read_buffer: [256]u8 = undefined;
-    var stdio_transport: lsp.Transport.Stdio = .init(io, &read_buffer, .stdin(), .stdout());
+    var stdio_transport: lsp.Transport.Stdio = .init(init.io, &read_buffer, .stdin(), .stdout());
     const transport: *lsp.Transport = &stdio_transport.transport;
 
     // The handler is a user provided type that stores the state of the
     // language server and provides callbacks for the desired LSP messages.
-    var handler: Handler = .init(gpa);
+    var handler: Handler = .init(init.gpa);
     defer handler.deinit();
 
     try lsp.basic_server.run(
-        gpa,
+        init.gpa,
         transport,
         &handler,
         std.log.err,

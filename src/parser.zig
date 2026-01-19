@@ -358,5 +358,5 @@ fn expectParseEqual(comptime T: type, comptime expected: anytype, s: []const u8)
 }
 
 comptime {
-    std.testing.refAllDeclsRecursive(@This());
+    std.testing.refAllDecls(@This());
 }

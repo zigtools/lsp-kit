@@ -10,7 +10,7 @@ Provides the necessary building blocks to develop Language Server Protocol imple
 # Installation
 
 > [!NOTE]
-> The default branch requires Zig `0.16.0-dev.2255+d417441f4` or later. Checkout the `0.15.x` branch when using Zig 0.15
+> The default branch requires Zig `0.16.0-dev.1976+8e091047b` or later. Checkout the `0.15.x` branch when using Zig 0.15
 
 ```bash
 # Initialize a `zig build` project if you haven't already

@@ -1137,12 +1137,32 @@ pub const Transport = struct {
         }
     };
 
+    /// Consider using `readJsonMessageUncancelable` to avoid `error.Canceled` being returned.
     pub fn readJsonMessage(transport: *Transport, io: std.Io, allocator: std.mem.Allocator) ReadError![]u8 {
         return try transport.vtable.readJsonMessage(transport, io, allocator);
     }
 
+    pub fn readJsonMessageUncancelable(transport: *Transport, io: std.Io, allocator: std.mem.Allocator) !void {
+        const old_cancel_protect = io.swapCancelProtection(.blocked);
+        defer _ = io.swapCancelProtection(old_cancel_protect);
+        return Transport.readJsonMessage(transport, io, allocator) catch |err| switch (err) {
+            error.Canceled => unreachable,
+            else => |e| return e,
+        };
+    }
+
+    /// Consider using `writeJsonMessageUncancelable` to avoid `error.Canceled` being returned.
     pub fn writeJsonMessage(transport: *Transport, io: std.Io, json_message: []const u8) WriteError!void {
         return try transport.vtable.writeJsonMessage(transport, io, json_message);
+    }
+
+    pub fn writeJsonMessageUncancelable(transport: *Transport, io: std.Io, json_message: []const u8) !void {
+        const old_cancel_protect = io.swapCancelProtection(.blocked);
+        defer _ = io.swapCancelProtection(old_cancel_protect);
+        Transport.writeJsonMessage(transport, io, json_message) catch |err| switch (err) {
+            error.Canceled => unreachable,
+            else => |e| return e,
+        };
     }
 
     pub fn writeRequest(

@@ -7,7 +7,7 @@ const lsp = @import("lsp");
 pub fn main(init: std.process.Init) !void {
     // LSP implementations typically communicate over stdio (stdin and stdout)
     var read_buffer: [256]u8 = undefined;
-    var stdio_transport: lsp.Transport.Stdio = .init(init.io, &read_buffer, .stdin(), .stdout());
+    var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, .stdin(), .stdout());
     const transport: *lsp.Transport = &stdio_transport.transport;
 
     // The handler is a user provided type that stores the state of the
@@ -16,6 +16,7 @@ pub fn main(init: std.process.Init) !void {
     defer handler.deinit();
 
     try lsp.basic_server.run(
+        init.io,
         init.gpa,
         transport,
         &handler,

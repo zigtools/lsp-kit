@@ -38,7 +38,7 @@ pub fn main(init: std.process.Init) !void {
     //
     // The `lsp.Transport.Stdio` implements the necessary logic to read and write messages over stdio.
     var read_buffer: [256]u8 = undefined;
-    var stdio_transport: lsp.Transport.Stdio = .init(io, &read_buffer, .stdin(), .stdout());
+    var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, .stdin(), .stdout());
     const transport: *lsp.Transport = &stdio_transport.transport;
 
     // keep track of opened documents
@@ -51,7 +51,7 @@ pub fn main(init: std.process.Init) !void {
 
     while (true) {
         // read the unparsed JSON-RPC message
-        const json_message = try transport.readJsonMessage(gpa);
+        const json_message = try transport.readJsonMessage(io, gpa);
         defer gpa.free(json_message);
         // std.log.debug("received message from client: {s}", .{json_message});
 
@@ -90,6 +90,7 @@ pub fn main(init: std.process.Init) !void {
                 .initialize => |params| {
                     _ = params.capabilities; // the client capabilities tell the server what "features" the client supports
                     try transport.writeResponse(
+                        io,
                         gpa,
                         request.id,
                         lsp.types.InitializeResult,
@@ -105,11 +106,11 @@ pub fn main(init: std.process.Init) !void {
                         .{ .emit_null_optional_fields = false },
                     );
                 },
-                .shutdown => try transport.writeResponse(gpa, request.id, void, {}, .{}),
+                .shutdown => try transport.writeResponse(io, gpa, request.id, void, {}, .{}),
                 .@"textDocument/formatting" => |params| {
                     const source = documents.get(params.textDocument.uri) orelse {
                         // We should read the document from the file system
-                        try transport.writeResponse(gpa, request.id, void, {}, .{});
+                        try transport.writeResponse(io, gpa, request.id, void, {}, .{});
                         continue;
                     };
                     const source_z = try gpa.dupeZ(u8, source);
@@ -119,7 +120,7 @@ pub fn main(init: std.process.Init) !void {
                     defer tree.deinit(gpa);
 
                     if (tree.errors.len != 0) {
-                        try transport.writeResponse(gpa, request.id, void, {}, .{});
+                        try transport.writeResponse(io, gpa, request.id, void, {}, .{});
                         continue;
                     }
 
@@ -127,7 +128,7 @@ pub fn main(init: std.process.Init) !void {
                     defer gpa.free(formatte_source);
 
                     if (std.mem.eql(u8, source, formatte_source)) {
-                        try transport.writeResponse(gpa, request.id, void, {}, .{});
+                        try transport.writeResponse(io, gpa, request.id, void, {}, .{});
                         continue;
                     }
 
@@ -139,9 +140,9 @@ pub fn main(init: std.process.Init) !void {
                         .newText = formatte_source,
                     }};
 
-                    try transport.writeResponse(gpa, request.id, []const lsp.types.TextEdit, result, .{});
+                    try transport.writeResponse(io, gpa, request.id, []const lsp.types.TextEdit, result, .{});
                 },
-                .other => try transport.writeResponse(gpa, request.id, void, {}, .{}),
+                .other => try transport.writeResponse(io, gpa, request.id, void, {}, .{}),
             },
             .notification => |notification| switch (notification.params) {
                 .initialized => {},

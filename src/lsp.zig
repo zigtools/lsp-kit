@@ -1167,6 +1167,7 @@ pub const Transport = struct {
 
     pub fn writeRequest(
         transport: *Transport,
+        io: std.Io,
         allocator: std.mem.Allocator,
         id: JsonRPCMessage.ID,
         method: []const u8,
@@ -1181,11 +1182,12 @@ pub const Transport = struct {
         };
         const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
         defer allocator.free(json_message);
-        try transport.writeJsonMessage(json_message);
+        try transport.writeJsonMessage(io, json_message);
     }
 
     pub fn writeNotification(
         transport: *Transport,
+        io: std.Io,
         allocator: std.mem.Allocator,
         method: []const u8,
         comptime Params: type,
@@ -1198,11 +1200,12 @@ pub const Transport = struct {
         };
         const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
         defer allocator.free(json_message);
-        try transport.writeJsonMessage(json_message);
+        try transport.writeJsonMessage(io, json_message);
     }
 
     pub fn writeResponse(
         transport: *Transport,
+        io: std.Io,
         allocator: std.mem.Allocator,
         id: ?JsonRPCMessage.ID,
         comptime Result: type,
@@ -1215,11 +1218,12 @@ pub const Transport = struct {
         };
         const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
         defer allocator.free(json_message);
-        try transport.writeJsonMessage(json_message);
+        try transport.writeJsonMessage(io, json_message);
     }
 
     pub fn writeErrorResponse(
         transport: *Transport,
+        io: std.Io,
         allocator: std.mem.Allocator,
         id: ?JsonRPCMessage.ID,
         err: JsonRPCMessage.Response.Error,
@@ -1231,7 +1235,7 @@ pub const Transport = struct {
         };
         const json_message = try std.json.Stringify.valueAlloc(allocator, request, options);
         defer allocator.free(json_message);
-        try transport.writeJsonMessage(json_message);
+        try transport.writeJsonMessage(io, json_message);
     }
 };
 

@@ -14,6 +14,7 @@ const offsets = lsp.offsets;
 const types = lsp.types;
 
 pub fn run(
+    io: std.Io,
     allocator: std.mem.Allocator,
     transport: *lsp.Transport,
     /// Must be a pointer to a container type (e.g. `struct`) that implements
@@ -59,7 +60,7 @@ pub fn run(
     comptime std.debug.assert(@hasDecl(Handler, "initialize") or @hasField(Handler, "initialize")); // The 'initialize' function cannot be omitted.
 
     while (true) {
-        const json_message = try transport.readJsonMessage(allocator);
+        const json_message = try transport.readJsonMessage(io, allocator);
         defer allocator.free(json_message);
 
         var arena_allocator: std.heap.ArenaAllocator = .init(allocator);
@@ -74,6 +75,7 @@ pub fn run(
         ) catch |err| {
             if (logErr) |log| log("Failed to handle message: {}", .{err});
             try transport.writeErrorResponse(
+                io,
                 allocator,
                 null,
                 .{ .code = .parse_error, .message = @errorName(err) },
@@ -96,6 +98,7 @@ pub fn run(
                             , .{ Handler, std.zig.fmtId(method), lsp.ResultType(method), @TypeOf(result) }));
                         }
                         try transport.writeResponse(
+                            io,
                             allocator,
                             request.id,
                             lsp.ResultType(method),
@@ -138,6 +141,7 @@ pub fn run(
                         }
 
                         try transport.writeErrorResponse(
+                            io,
                             allocator,
                             request.id,
                             .{ .code = code, .message = @errorName(err) },
@@ -147,6 +151,7 @@ pub fn run(
                 },
                 .other => {
                     try transport.writeResponse(
+                        io,
                         allocator,
                         request.id,
                         ?void,

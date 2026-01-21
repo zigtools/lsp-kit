@@ -71,7 +71,7 @@ pub fn main(init: std.process.Init) !void {
     //
     // The `lsp.Transport.Stdio` implements the necessary logic to read and write messages over stdio.
     var read_buffer: [256]u8 = undefined;
-    var stdio_transport: lsp.Transport.Stdio = .init(io, &read_buffer, .{ .handle = child_process.stdout.?.handle }, child_process.stdin.?);
+    var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, .{ .handle = child_process.stdout.?.handle }, child_process.stdin.?);
     const transport: *lsp.Transport = &stdio_transport.transport;
 
     // The order of exchanged messages will look similar to this:
@@ -84,6 +84,7 @@ pub fn main(init: std.process.Init) !void {
 
     std.log.debug("sending 'initialize' request to server", .{});
     try transport.writeRequest(
+        io,
         gpa,
         .{ .number = 0 },
         "initialize", // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#initialize
@@ -95,7 +96,7 @@ pub fn main(init: std.process.Init) !void {
     // Wait for the response from the server
     // For the sake of simplicity, we will block here and read messages until the response to our request has been found. All other messages will be ignored.
     // A more sophisticated client implementation will need to handle messages asynchronously.
-    const initialize_response = try readAndIgnoreUntilResponse(gpa, transport, .{ .number = 0 }, "initialize");
+    const initialize_response = try readAndIgnoreUntilResponse(io, gpa, transport, .{ .number = 0 }, "initialize");
     defer initialize_response.deinit();
 
     const initialize_result: lsp.types.InitializeResult = initialize_response.value;
@@ -120,6 +121,7 @@ pub fn main(init: std.process.Init) !void {
 
     std.log.debug("sending 'initialized' notification to server", .{});
     try transport.writeNotification(
+        io,
         gpa,
         "initialized", // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#initialized
         lsp.types.InitializedParams,
@@ -132,6 +134,7 @@ pub fn main(init: std.process.Init) !void {
     std.log.info("This document recently came in by the CLI.", .{});
     std.log.debug("sending 'textDocument/didOpen' notification to server", .{});
     try transport.writeNotification(
+        io,
         gpa,
         "textDocument/didOpen", // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_didOpen
         lsp.types.TextDocument.DidOpenParams,
@@ -149,6 +152,7 @@ pub fn main(init: std.process.Init) !void {
     std.log.info("Just to double check, could you verify that it is formatted correctly?", .{});
     std.log.debug("sending 'textDocument/formatting' request to server", .{});
     try transport.writeRequest(
+        io,
         gpa,
         .{ .number = 1 },
         "textDocument/formatting", // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocument_formatting
@@ -160,7 +164,7 @@ pub fn main(init: std.process.Init) !void {
         .{ .emit_null_optional_fields = false },
     );
 
-    const formatting_response = try readAndIgnoreUntilResponse(gpa, transport, .{ .number = 1 }, "textDocument/formatting");
+    const formatting_response = try readAndIgnoreUntilResponse(io, gpa, transport, .{ .number = 1 }, "textDocument/formatting");
     defer formatting_response.deinit();
 
     const text_edits = formatting_response.value orelse &.{};
@@ -177,6 +181,7 @@ pub fn main(init: std.process.Init) !void {
     // Even though this is a request, we do not wait for a response because we are going to close the server anyway.
     std.log.debug("sending 'shutdown' request to server", .{});
     try transport.writeRequest(
+        io,
         gpa,
         .{ .number = 2 },
         "shutdown", // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#shutdown
@@ -187,6 +192,7 @@ pub fn main(init: std.process.Init) !void {
 
     std.log.debug("sending 'exit' notification to server", .{});
     try transport.writeNotification(
+        io,
         gpa,
         "exit", // https://microsoft.github.io/language-server-protocol/specifications/specification-current/#exit
         void,
@@ -215,6 +221,7 @@ fn fatal(comptime format: []const u8, args: anytype) noreturn {
 
 /// Do not use such a function in an actual implementation.
 fn readAndIgnoreUntilResponse(
+    io: std.Io,
     allocator: std.mem.Allocator,
     transport: *lsp.Transport,
     id: lsp.JsonRPCMessage.ID,
@@ -222,7 +229,7 @@ fn readAndIgnoreUntilResponse(
 ) !std.json.Parsed(lsp.ResultType(method)) {
     while (true) {
         // read the unparsed JSON-RPC message
-        const json_message = try transport.readJsonMessage(allocator);
+        const json_message = try transport.readJsonMessage(io, allocator);
         defer allocator.free(json_message);
         std.log.debug("received message from server: {s}", .{json_message});
 

@@ -1085,8 +1085,8 @@ pub const Transport = struct {
     vtable: *const VTable,
 
     pub const VTable = struct {
-        readJsonMessage: *const fn (transport: *Transport, allocator: std.mem.Allocator) ReadError![]u8,
-        writeJsonMessage: *const fn (transport: *Transport, json_message: []const u8) WriteError!void,
+        readJsonMessage: *const fn (transport: *Transport, io: std.Io, allocator: std.mem.Allocator) ReadError![]u8,
+        writeJsonMessage: *const fn (transport: *Transport, io: std.Io, json_message: []const u8) WriteError!void,
     };
 
     pub const ReadError = std.Io.File.Reader.Error || error{EndOfStream} || BaseProtocolHeader.ParseError || std.mem.Allocator.Error;
@@ -1094,13 +1094,11 @@ pub const Transport = struct {
 
     pub const Stdio = struct {
         transport: Transport,
-        io: std.Io,
         reader: std.Io.Reader,
         read_from: std.Io.File,
         write_to: std.Io.File,
 
         pub fn init(
-            io: std.Io,
             /// See `BaseProtocolHeader.parse`
             read_buffer: []u8,
             read_from: std.Io.File,
@@ -1113,16 +1111,15 @@ pub const Transport = struct {
                         .writeJsonMessage = &Stdio.writeJsonMessage,
                     },
                 },
-                .io = io,
                 .reader = std.Io.File.Reader.initInterface(read_buffer),
                 .read_from = read_from,
                 .write_to = write_to,
             };
         }
 
-        fn readJsonMessage(transport: *Transport, allocator: std.mem.Allocator) ReadError![]u8 {
+        fn readJsonMessage(transport: *Transport, io: std.Io, allocator: std.mem.Allocator) ReadError![]u8 {
             const stdio: *Stdio = @fieldParentPtr("transport", transport);
-            var file_reader: std.Io.File.Reader = .initStreaming(stdio.read_from, stdio.io, stdio.reader.buffer);
+            var file_reader: std.Io.File.Reader = .initStreaming(stdio.read_from, io, stdio.reader.buffer);
             file_reader.interface = stdio.reader;
             defer stdio.reader = file_reader.interface;
             return lsp.readJsonMessage(&file_reader.interface, allocator) catch |err| switch (err) {
@@ -1131,21 +1128,21 @@ pub const Transport = struct {
             };
         }
 
-        fn writeJsonMessage(transport: *Transport, json_message: []const u8) WriteError!void {
+        fn writeJsonMessage(transport: *Transport, io: std.Io, json_message: []const u8) WriteError!void {
             const stdio: *Stdio = @fieldParentPtr("transport", transport);
-            var file_writer: std.Io.File.Writer = .initStreaming(stdio.write_to, stdio.io, &.{});
+            var file_writer: std.Io.File.Writer = .initStreaming(stdio.write_to, io, &.{});
             lsp.writeJsonMessage(&file_writer.interface, json_message) catch |err| switch (err) {
                 error.WriteFailed => return file_writer.err.?,
             };
         }
     };
 
-    pub fn readJsonMessage(transport: *Transport, allocator: std.mem.Allocator) ReadError![]u8 {
-        return try transport.vtable.readJsonMessage(transport, allocator);
+    pub fn readJsonMessage(transport: *Transport, io: std.Io, allocator: std.mem.Allocator) ReadError![]u8 {
+        return try transport.vtable.readJsonMessage(transport, io, allocator);
     }
 
-    pub fn writeJsonMessage(transport: *Transport, json_message: []const u8) WriteError!void {
-        return try transport.vtable.writeJsonMessage(transport, json_message);
+    pub fn writeJsonMessage(transport: *Transport, io: std.Io, json_message: []const u8) WriteError!void {
+        return try transport.vtable.writeJsonMessage(transport, io, json_message);
     }
 
     pub fn writeRequest(
@@ -1249,22 +1246,22 @@ pub fn ThreadSafeTransport(config: ThreadSafeTransportConfig) type {
             };
         }
 
-        pub fn readJsonMessage(transport: *Transport, allocator: std.mem.Allocator) Transport.ReadError![]u8 {
+        pub fn readJsonMessage(transport: *Transport, io: std.Io, allocator: std.mem.Allocator) Transport.ReadError![]u8 {
             const self: *Self = @fieldParentPtr("transport", transport);
 
             self.in_mutex.lock();
             defer self.in_mutex.unlock();
 
-            return try self.child_transport.readJsonMessage(allocator);
+            return try self.child_transport.readJsonMessage(io, allocator);
         }
 
-        pub fn writeJsonMessage(transport: *Transport, json_message: []const u8) Transport.WriteError!void {
+        pub fn writeJsonMessage(transport: *Transport, io: std.Io, json_message: []const u8) Transport.WriteError!void {
             const self: *Self = @fieldParentPtr("transport", transport);
 
             self.out_mutex.lock();
             defer self.out_mutex.unlock();
 
-            return try self.child_transport.writeJsonMessage(json_message);
+            return try self.child_transport.writeJsonMessage(io, json_message);
         }
 
         const in_mutex_init = if (config.thread_safe_read)

@@ -1244,7 +1244,7 @@ pub const ThreadSafeTransportConfig = struct {
     thread_safe_read: bool,
     /// Makes `writeJsonMessage` thread-safe.
     thread_safe_write: bool,
-    MutexType: type = std.Thread.Mutex,
+    MutexType: type = std.Io.Mutex,
 };
 
 /// Wraps a non-thread-safe transport and makes it thread-safe.
@@ -1273,8 +1273,8 @@ pub fn ThreadSafeTransport(config: ThreadSafeTransportConfig) type {
         pub fn readJsonMessage(transport: *Transport, io: std.Io, allocator: std.mem.Allocator) Transport.ReadError![]u8 {
             const self: *Self = @fieldParentPtr("transport", transport);
 
-            self.in_mutex.lock();
-            defer self.in_mutex.unlock();
+            try self.in_mutex.lock(io);
+            defer self.in_mutex.unlock(io);
 
             return try self.child_transport.readJsonMessage(io, allocator);
         }
@@ -1282,25 +1282,25 @@ pub fn ThreadSafeTransport(config: ThreadSafeTransportConfig) type {
         pub fn writeJsonMessage(transport: *Transport, io: std.Io, json_message: []const u8) Transport.WriteError!void {
             const self: *Self = @fieldParentPtr("transport", transport);
 
-            self.out_mutex.lock();
-            defer self.out_mutex.unlock();
+            try self.out_mutex.lock(io);
+            defer self.out_mutex.unlock(io);
 
             return try self.child_transport.writeJsonMessage(io, json_message);
         }
 
         const in_mutex_init = if (config.thread_safe_read)
-            config.MutexType{}
+            config.MutexType.init
         else
             DummyMutex{};
 
         const out_mutex_init = if (config.thread_safe_write)
-            config.MutexType{}
+            config.MutexType.init
         else
             DummyMutex{};
 
         const DummyMutex = struct {
-            fn lock(_: *DummyMutex) void {}
-            fn unlock(_: *DummyMutex) void {}
+            pub fn lock(_: *DummyMutex, _: std.Io) !void {}
+            pub fn unlock(_: *DummyMutex, _: std.Io) void {}
         };
     };
 }

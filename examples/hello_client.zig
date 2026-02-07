@@ -71,7 +71,7 @@ pub fn main(init: std.process.Init) !void {
     //
     // The `lsp.Transport.Stdio` implements the necessary logic to read and write messages over stdio.
     var read_buffer: [256]u8 = undefined;
-    var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, .{ .handle = child_process.stdout.?.handle }, child_process.stdin.?);
+    var stdio_transport: lsp.Transport.Stdio = .init(&read_buffer, child_process.stdout.?, child_process.stdin.?);
     const transport: *lsp.Transport = &stdio_transport.transport;
 
     // The order of exchanged messages will look similar to this:

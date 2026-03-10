@@ -10,7 +10,7 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
     const gpa = debug_allocator.allocator();
 
     var threaded: std.Io.Threaded = .init_single_threaded;
-    const io = threaded.ioBasic();
+    const io = threaded.io();
 
     var arg_it = try init.args.iterateAllocator(gpa);
     defer arg_it.deinit();

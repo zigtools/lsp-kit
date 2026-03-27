@@ -38,7 +38,7 @@ pub const Handler = struct {
     fn init(allocator: std.mem.Allocator) Handler {
         return .{
             .allocator = allocator,
-            .files = .{},
+            .files = .empty,
             // The default position encoding is UTF-16.
             // The agreed upon encoding between server client is actually decided during `initialize`.
             .offset_encoding = .@"utf-16",

@@ -32,7 +32,7 @@ pub const Position = types.Position;
 pub const Range = types.Range;
 
 pub fn indexToPosition(text: []const u8, index: usize, encoding: Encoding) Position {
-    const last_line_start = if (std.mem.lastIndexOfScalar(u8, text[0..index], '\n')) |line| line + 1 else 0;
+    const last_line_start = if (std.mem.findScalarLast(u8, text[0..index], '\n')) |line| line + 1 else 0;
     const line_count = std.mem.count(u8, text[0..last_line_start], "\n");
 
     return .{
@@ -248,8 +248,8 @@ test rangeToSlice {
 
 pub fn lineLocAtIndex(text: []const u8, index: usize) Loc {
     return .{
-        .start = if (std.mem.lastIndexOfScalar(u8, text[0..index], '\n')) |idx| idx + 1 else 0,
-        .end = std.mem.indexOfScalarPos(u8, text, index, '\n') orelse text.len,
+        .start = if (std.mem.findScalarLast(u8, text[0..index], '\n')) |idx| idx + 1 else 0,
+        .end = std.mem.findScalarPos(u8, text, index, '\n') orelse text.len,
     };
 }
 
@@ -296,7 +296,7 @@ test lineSliceAtPosition {
 
 pub fn lineLocUntilIndex(text: []const u8, index: usize) Loc {
     return .{
-        .start = if (std.mem.lastIndexOfScalar(u8, text[0..index], '\n')) |idx| idx + 1 else 0,
+        .start = if (std.mem.findScalarLast(u8, text[0..index], '\n')) |idx| idx + 1 else 0,
         .end = index,
     };
 }

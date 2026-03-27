@@ -982,7 +982,7 @@ pub const BaseProtocolHeader = struct {
 
             if (header.len == 0) break;
 
-            const colon_index = std.mem.indexOf(u8, header, ": ") orelse return error.InvalidHeaderField;
+            const colon_index = std.mem.find(u8, header, ": ") orelse return error.InvalidHeaderField;
 
             const header_name = header[0..colon_index];
             const header_value = header[colon_index + 2 ..];

@@ -113,7 +113,7 @@ pub fn main(init: std.process.Init) !void {
                         try transport.writeResponse(io, gpa, request.id, void, {}, .{});
                         continue;
                     };
-                    const source_z = try gpa.dupeZ(u8, source);
+                    const source_z = try gpa.dupeSentinel(u8, source, 0);
                     defer gpa.free(source_z);
 
                     var tree: std.zig.Ast = try .parse(gpa, source_z, .zig);

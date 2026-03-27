@@ -29,7 +29,7 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
     var zig_tree: std.zig.Ast = try .parse(gpa, source, .zig);
     defer zig_tree.deinit(gpa);
 
-    std.Io.Dir.cwd().createDirPath(io, std.fs.path.dirname(out_file_path) orelse ".") catch {};
+    std.Io.Dir.cwd().createDirPath(io, std.Io.Dir.path.dirname(out_file_path) orelse ".") catch {};
 
     var out_file = try std.Io.Dir.cwd().createFile(io, out_file_path, .{});
     defer out_file.close(io);
@@ -750,7 +750,7 @@ const SymbolNamespaceIterator = struct {
         switch (it.direction) {
             .forward => {
                 if (it.index == it.name.len) return null;
-                const new_index = std.mem.indexOfScalarPos(u8, it.name, it.index, '.') orelse {
+                const new_index = std.mem.findScalarPos(u8, it.name, it.index, '.') orelse {
                     defer it.index = it.name.len;
                     return it.name[it.index..];
                 };
@@ -760,7 +760,7 @@ const SymbolNamespaceIterator = struct {
             .reverse => {
                 if (it.index == 0) return null;
                 const name = it.name[0..it.index];
-                const new_index = std.mem.lastIndexOfScalar(u8, name, '.') orelse {
+                const new_index = std.mem.findScalarLast(u8, name, '.') orelse {
                     it.index = 0;
                     return name;
                 };

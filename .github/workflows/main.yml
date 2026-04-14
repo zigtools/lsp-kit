@@ -23,7 +23,7 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: master
+          version: 0.16.0
 
       - name: Setup kcov
         if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04'

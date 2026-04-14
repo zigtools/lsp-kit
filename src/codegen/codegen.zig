@@ -207,11 +207,11 @@ const Symbol = union(enum) {
 };
 
 const SymbolTree = struct {
-    root: std.StringArrayHashMapUnmanaged(Node) = .empty,
+    root: std.array_hash_map.String(Node) = .empty,
 
     const Node = struct {
         symbol: Symbol,
-        children: std.StringArrayHashMapUnmanaged(Node) = .empty,
+        children: std.array_hash_map.String(Node) = .empty,
 
         fn deinit(
             node: *Node,
@@ -258,7 +258,7 @@ const SymbolTree = struct {
 
             fn dumpNode(
                 l: *@This(),
-                children: std.StringArrayHashMapUnmanaged(Node),
+                children: std.array_hash_map.String(Node),
                 writer: *std.Io.Writer,
             ) error{WriteFailed}!void {
                 for (children.keys(), children.values(), 0..) |name, child_node, i| {
@@ -292,7 +292,7 @@ const Renderer = struct {
 
     const Scope = struct {
         name: ?[]const u8,
-        symbols: std.StringArrayHashMapUnmanaged(SymbolTree.Node),
+        symbols: std.array_hash_map.String(SymbolTree.Node),
     };
 
     fn renderNode(r: *Renderer, node: *const SymbolTree.Node, name: []const u8) error{WriteFailed}!void {
@@ -461,7 +461,7 @@ const Renderer = struct {
     fn renderType(
         r: *Renderer,
         ty: MetaModel.Type,
-        children: std.StringArrayHashMapUnmanaged(SymbolTree.Node),
+        children: std.array_hash_map.String(SymbolTree.Node),
     ) error{WriteFailed}!void {
         switch (ty) {
             .@"and", .@"or" => {},
@@ -653,7 +653,7 @@ const Renderer = struct {
     const FormatType = struct {
         r: *Renderer,
         ty: MetaModel.Type,
-        children: std.StringArrayHashMapUnmanaged(SymbolTree.Node) = .empty,
+        children: std.array_hash_map.String(SymbolTree.Node) = .empty,
 
         pub fn format(
             ctx: FormatType,
@@ -798,7 +798,7 @@ fn constructSymbolTree(
     arena: std.mem.Allocator,
     meta_model: *const MetaModel,
 ) error{OutOfMemory}!SymbolTree {
-    var symbols: std.StringArrayHashMapUnmanaged(Symbol) = .empty;
+    var symbols: std.array_hash_map.String(Symbol) = .empty;
     defer symbols.deinit(gpa);
 
     try symbols.ensureTotalCapacity(
@@ -1015,7 +1015,7 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
     }
 
     {
-        var original_symbol_names: std.StringArrayHashMapUnmanaged(void) = .empty;
+        var original_symbol_names: std.array_hash_map.String(void) = .empty;
         defer original_symbol_names.deinit(gpa);
         try original_symbol_names.ensureTotalCapacity(gpa, meta_model.structures.len + meta_model.enumerations.len + meta_model.typeAliases.len);
         for (meta_model.structures) |structure| original_symbol_names.putAssumeCapacityNoClobber(structure.name, {});

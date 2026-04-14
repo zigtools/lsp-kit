@@ -42,7 +42,7 @@ pub fn main(init: std.process.Init) !void {
     const transport: *lsp.Transport = &stdio_transport.transport;
 
     // keep track of opened documents
-    var documents: std.StringArrayHashMapUnmanaged([]const u8) = .empty;
+    var documents: std.array_hash_map.String([]const u8) = .empty;
     defer {
         for (documents.keys()) |uri| gpa.free(uri);
         for (documents.values()) |source| gpa.free(source);

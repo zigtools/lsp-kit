@@ -168,19 +168,19 @@ pub fn build(b: *std.Build) void {
 
     // ----------------------------- Code Coverage -----------------------------
 
-    const kcov_bin = b.findProgram(.{
+    const kcov_bin = b.findProgramLazy(.{
         .names = &.{"kcov"},
-    }) orelse "kcov";
+    }) orelse @panic("Failed to find kcov");
 
     const kcov_merge = std.Build.Step.Run.create(b, "kcov merge coverage");
     kcov_merge.rename_step_with_output_arg = false;
-    kcov_merge.addArg(kcov_bin);
+    kcov_merge.addFileArg(kcov_bin);
     kcov_merge.addArg("--merge");
     const coverage_output = kcov_merge.addOutputDirectoryArg(".");
 
     for ([_]*std.Build.Step.Compile{ lsp_tests, lsp_parser_tests }) |test_artifact| {
         const kcov_collect = std.Build.Step.Run.create(b, "kcov collect coverage");
-        kcov_collect.addArg(kcov_bin);
+        kcov_collect.addFileArg(kcov_bin);
         kcov_collect.addArg("--collect-only");
         kcov_collect.addPrefixedDirectoryArg("--include-path=", b.path("."));
         kcov_merge.addDirectoryArg(kcov_collect.addOutputDirectoryArg(test_artifact.name));

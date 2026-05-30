@@ -118,11 +118,13 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(hello_client_exe);
 
     const run_hello_client = b.addRunArtifact(hello_client_exe);
-    if (b.args) |args| {
-        run_hello_client.addArgs(args);
-        if (args.len == 1) {
-            run_hello_client.addArtifactArg(hello_server_exe);
-        }
+    run_hello_client.addPassthruArgs();
+
+    const server_path_opt = b.option([]const u8, "server_path", "Set server path for run-hello-client");
+    if (server_path_opt) |server_path| {
+        run_hello_client.addArg(server_path);
+    } else {
+        run_hello_client.addArtifactArg(hello_server_exe);
     }
 
     const run_hello_client_step = b.step("run-hello-client", "Run the hello-client example");
@@ -166,7 +168,9 @@ pub fn build(b: *std.Build) void {
 
     // ----------------------------- Code Coverage -----------------------------
 
-    const kcov_bin = b.findProgram(&.{"kcov"}, &.{}) catch "kcov";
+    const kcov_bin = b.findProgram(.{
+        .names = &.{"kcov"},
+    }) orelse "kcov";
 
     const kcov_merge = std.Build.Step.Run.create(b, "kcov merge coverage");
     kcov_merge.rename_step_with_output_arg = false;

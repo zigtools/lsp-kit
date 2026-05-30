@@ -170,7 +170,7 @@ pub fn build(b: *std.Build) void {
 
     const kcov_bin = b.findProgramLazy(.{
         .names = &.{"kcov"},
-    }) orelse @panic("Failed to find kcov");
+    });
 
     const kcov_merge = std.Build.Step.Run.create(b, "kcov merge coverage");
     kcov_merge.rename_step_with_output_arg = false;

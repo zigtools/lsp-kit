@@ -3,10 +3,10 @@ name: CI
 on:
   push:
     branches:
-      - main
+      - "0.16.x"
   pull_request:
     branches:
-      - main
+      - "0.16.x"
   workflow_dispatch:
 
 jobs:
@@ -25,12 +25,6 @@ jobs:
         with:
           version: 0.16.0
 
-      - name: Setup kcov
-        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04'
-        run: |
-          wget https://github.com/SimonKagstrom/kcov/releases/download/v42/kcov-amd64.tar.gz
-          sudo tar xf kcov-amd64.tar.gz -C /
-
       - name: Check Formatting
         run: zig fmt --ast-check --check src
 
@@ -39,15 +33,3 @@ jobs:
 
       - name: Build Examples
         run: zig build --summary all
-
-      - name: Collect Coverage
-        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04'
-        run: zig build coverage -Duse-llvm --summary all
-
-      - name: Upload coverage reports to Codecov
-        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04'
-        uses: codecov/codecov-action@v5
-        with:
-          directory: zig-out/coverage/kcov-merged
-          fail_ci_if_error: true
-          verbose: true

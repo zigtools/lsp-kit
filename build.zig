@@ -94,7 +94,6 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "lsp", .module = lsp_module },
             },
         }),
-        .use_lld = use_llvm,
         .use_llvm = use_llvm,
     });
     b.installArtifact(hello_server_exe);
@@ -112,7 +111,6 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "lsp", .module = lsp_module },
             },
         }),
-        .use_lld = use_llvm,
         .use_llvm = use_llvm,
     });
     b.installArtifact(hello_client_exe);
@@ -133,7 +131,6 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "lsp", .module = lsp_module },
             },
         }),
-        .use_lld = use_llvm,
         .use_llvm = use_llvm,
     });
     b.installArtifact(my_first_server);
@@ -143,7 +140,6 @@ pub fn build(b: *std.Build) void {
     const lsp_tests = b.addTest(.{
         .root_module = lsp_module,
         .filters = test_filters,
-        .use_lld = use_llvm,
         .use_llvm = use_llvm,
     });
 
@@ -151,7 +147,6 @@ pub fn build(b: *std.Build) void {
         .name = "test parser",
         .root_module = lsp_parser_module,
         .filters = test_filters,
-        .use_lld = use_llvm,
         .use_llvm = use_llvm,
     });
 

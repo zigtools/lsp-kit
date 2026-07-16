@@ -26,7 +26,7 @@ pub fn main(init: std.process.Init.Minimal) !u8 {
     const source = try renderMetaModel(gpa, &parsed_meta_model.value);
     defer gpa.free(source);
 
-    var zig_tree: std.zig.Ast = try .parse(gpa, source, .zig);
+    var zig_tree: std.zig.Ast = try .parse(gpa, source, .{});
     defer zig_tree.deinit(gpa);
 
     std.Io.Dir.cwd().createDirPath(io, std.Io.Dir.path.dirname(out_file_path) orelse ".") catch {};

@@ -116,7 +116,7 @@ pub fn main(init: std.process.Init) !void {
                     const source_z = try gpa.dupeSentinel(u8, source, 0);
                     defer gpa.free(source_z);
 
-                    var tree: std.zig.Ast = try .parse(gpa, source_z, .zig);
+                    var tree: std.zig.Ast = try .parse(gpa, source_z, .{});
                     defer tree.deinit(gpa);
 
                     if (tree.errors.len != 0) {

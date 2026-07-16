@@ -366,6 +366,7 @@
         .{"DocumentDiagnosticReport",                   .{ .rename = "document_diagnostic.Report" } },
         .{"DocumentDiagnosticReportKind",               .{ .rename = "document_diagnostic.Report.Kind" } },
         .{"DocumentDiagnosticReportPartialResult",      .{ .rename = "document_diagnostic.Report.PartialResult" } },
+        .{"DocumentDiagnosticReportProgress",           .{ .rename = "document_diagnostic.Report.Progress" } },
         .{"UnchangedDocumentDiagnosticReport",          .{ .rename = "document_diagnostic.Report.Unchanged" } },
         .{"RelatedUnchangedDocumentDiagnosticReport",   .{ .rename = "document_diagnostic.Report.Unchanged.Related" } },
         .{"FullDocumentDiagnosticReport",               .{ .rename = "document_diagnostic.Report.Full" } },

@@ -1015,6 +1015,11 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
     }
 
     {
+        var ordered_symbol_map: std.array_hash_map.String(void) = .empty;
+        defer ordered_symbol_map.deinit(gpa);
+        try ordered_symbol_map.ensureTotalCapacity(gpa, config.symbols.len);
+        for (config.symbols) |symbol| ordered_symbol_map.putAssumeCapacityNoClobber(symbol[0], {});
+
         var original_symbol_names: std.array_hash_map.String(void) = .empty;
         defer original_symbol_names.deinit(gpa);
         try original_symbol_names.ensureTotalCapacity(gpa, meta_model.structures.len + meta_model.enumerations.len + meta_model.typeAliases.len);
@@ -1024,12 +1029,13 @@ fn renderMetaModel(gpa: std.mem.Allocator, meta_model: *MetaModel) error{ OutOfM
 
         original_symbol_names.sort(struct {
             names: []const []const u8,
+            ordered_symbol_map: std.array_hash_map.String(void),
             pub fn lessThan(ctx: @This(), a_index: usize, b_index: usize) bool {
                 const a_name = ctx.names[a_index];
                 const b_name = ctx.names[b_index];
-                return symbol_map.getIndex(a_name).? < symbol_map.getIndex(b_name).?;
+                return ctx.ordered_symbol_map.getIndex(a_name).? < ctx.ordered_symbol_map.getIndex(b_name).?;
             }
-        }{ .names = original_symbol_names.keys() });
+        }{ .names = original_symbol_names.keys(), .ordered_symbol_map = ordered_symbol_map });
 
         try renderer.w.writeAll(
             \\/// A flat namespace that aliases all LSP types under their original name from the official specification.

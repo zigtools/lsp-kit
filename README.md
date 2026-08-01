@@ -16,7 +16,7 @@ Provides the necessary building blocks to develop Language Server Protocol imple
 # Initialize a `zig build` project if you haven't already
 zig init
 # Add the `lsp_kit` package to your `build.zig.zon`
-zig fetch --save git+https://github.com/zigtools/lsp-kit.git
+zig fetch --save git+https://github.com/zigtools/lsp-kit.git#0.15.x
 ```
 
 You can then import the `lsp` module in your `build.zig` with:

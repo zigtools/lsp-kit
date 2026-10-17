@@ -77,7 +77,7 @@ pub const JsonRPCMessage = union(enum) {
                 _,
 
                 pub fn jsonStringify(code: Code, stream: anytype) @TypeOf(stream.*).Error!void {
-                    try stream.write(@intFromEnum(code));
+                    try stream.write(@backingInt(code));
                 }
             };
         };
@@ -207,7 +207,8 @@ pub const JsonRPCMessage = union(enum) {
         var fields: Fields = .{};
 
         for (source.object.keys(), source.object.values()) |field_name, field_source| {
-            inline for (comptime std.meta.fieldNames(Fields)) |name| {
+            const field_names = @typeInfo(Fields).@"struct".field_names;
+            inline for (field_names) |name| {
                 if (std.mem.eql(u8, name, field_name)) {
                     const field_enum = comptime @field(std.meta.FieldEnum(Fields), name);
                     @field(fields, name) = try Fields.parseFromValue(field_enum, allocator, field_source, options);
@@ -488,19 +489,19 @@ pub const JsonRPCMessage = union(enum) {
             \\{"id": "id", "jsonrpc": "2.0", "result": null, "error": {"code": 3, "message": "foo", "data": null}}
         , .{ .response = .{
             .id = .{ .string = "id" },
-            .result_or_error = .{ .@"error" = .{ .code = @enumFromInt(3), .message = "foo", .data = null } },
+            .result_or_error = .{ .@"error" = .{ .code = @fromBackingInt(3), .message = "foo", .data = null } },
         } }, .{});
         try testParse(
             \\{"id": "id", "jsonrpc": "2.0", "error": {"code": 42, "message": "bar", "data": true}}
         , .{ .response = .{
             .id = .{ .string = "id" },
-            .result_or_error = .{ .@"error" = .{ .code = @enumFromInt(42), .message = "bar", .data = .{ .bool = true } } },
+            .result_or_error = .{ .@"error" = .{ .code = @fromBackingInt(42), .message = "bar", .data = .{ .bool = true } } },
         } }, .{});
         try testParse(
             \\{"id": "id", "jsonrpc": "2.0", "error": {"code": 42, "message": "bar"}, "result": null}
         , .{ .response = .{
             .id = .{ .string = "id" },
-            .result_or_error = .{ .@"error" = .{ .code = @enumFromInt(42), .message = "bar", .data = null } },
+            .result_or_error = .{ .@"error" = .{ .code = @fromBackingInt(42), .message = "bar", .data = null } },
         } }, .{});
     }
 
@@ -1310,7 +1311,7 @@ pub fn readJsonMessage(
     allocator: std.mem.Allocator,
 ) (std.Io.Reader.Error || std.mem.Allocator.Error || BaseProtocolHeader.ParseError)![]u8 {
     const header: BaseProtocolHeader = try .parse(reader);
-    return try reader.readAlloc(allocator, header.content_length);
+    return try reader.readAllocAll(allocator, header.content_length);
 }
 
 test readJsonMessage {
@@ -1325,7 +1326,7 @@ test readJsonMessage {
 pub fn writeJsonMessage(writer: *std.Io.Writer, json_message: []const u8) std.Io.Writer.Error!void {
     const header: BaseProtocolHeader = .{ .content_length = json_message.len };
     var buffer: [64]u8 = undefined;
-    const prefix = std.fmt.bufPrint(&buffer, "{f}", .{header}) catch unreachable;
+    const prefix = std.mem.print(&buffer, "{f}", .{header}) catch unreachable;
     var data: [2][]const u8 = .{ prefix, json_message };
     try writer.writeVecAll(&data);
     try writer.flush();
@@ -1667,7 +1668,7 @@ test "bufPrintLogMessage - avoid buffer overflow" {
     var buffer: [128]u8 = undefined;
     const json_message = bufPrintLogMessage(
         &buffer,
-        @enumFromInt(42),
+        @fromBackingInt(42),
         "01234567890123456789012345678901234567890123456789",
         .{},
     );
@@ -1681,7 +1682,7 @@ test "bufPrintLogMessage - avoid buffer overflow with escape codes" {
     var buffer: [128]u8 = undefined;
     const json_message = bufPrintLogMessage(
         &buffer,
-        @enumFromInt(42),
+        @fromBackingInt(42),
         &@as(@TypeOf(buffer), @splat('\x00')),
         .{},
     );
@@ -2138,8 +2139,9 @@ pub fn Message(
             comptime Source: type,
         ) std.StaticStringMap(ParamsParserFunc(Params, Source)) {
             comptime {
-                const field_names = std.meta.fieldNames(Params);
-                const field_types = std.meta.fieldTypes(Params);
+                const params_type_info = @typeInfo(Params).@"union";
+                const field_names = params_type_info.field_names;
+                const field_types = params_type_info.field_types;
 
                 var kvs_list: [field_names.len - 1]struct { []const u8, ParamsParserFunc(Params, Source) } = undefined;
 
@@ -2865,7 +2867,7 @@ test "Message.Response - with 'error' field" {
     const msg: ExampleMessage = .{
         .response = .{
             .id = .{ .number = 5 },
-            .result_or_error = .{ .@"error" = .{ .code = @enumFromInt(0), .message = "" } },
+            .result_or_error = .{ .@"error" = .{ .code = @fromBackingInt(0), .message = "" } },
         },
     };
     try testMessage(msg, "{ \"jsonrpc\": \"2.0\" , \"id\": 5            , \"error\": {\"code\": 0, \"message\": \"\"} }");
@@ -2891,7 +2893,7 @@ test "Message.Response - no 'id' field with 'error' field" {
     const msg: ExampleMessage = .{
         .response = .{
             .id = null,
-            .result_or_error = .{ .@"error" = .{ .code = @enumFromInt(0), .message = "" } },
+            .result_or_error = .{ .@"error" = .{ .code = @fromBackingInt(0), .message = "" } },
         },
     };
     try testMessage(msg, "{ \"jsonrpc\": \"2.0\"                        , \"error\": {\"code\": 0, \"message\": \"\"} }");
@@ -2908,7 +2910,7 @@ test "Message.Response - 'result' is null with 'error' field" {
     const msg: ExampleMessage = .{
         .response = .{
             .id = .{ .number = 5 },
-            .result_or_error = .{ .@"error" = .{ .code = @enumFromInt(0), .message = "" } },
+            .result_or_error = .{ .@"error" = .{ .code = @fromBackingInt(0), .message = "" } },
         },
     };
 

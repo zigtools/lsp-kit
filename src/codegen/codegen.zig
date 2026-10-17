@@ -842,7 +842,7 @@ fn constructSymbolTree(
     for (meta_model.requests) |*request| {
         const distinct_result_type = findInnerDistinctType(&request.result, meta_model) orelse continue;
 
-        const result_name = try std.fmt.allocPrint(arena, "{s}.Result", .{request.method});
+        const result_name = try arena.print("{s}.Result", .{request.method});
         try symbols.putNoClobber(gpa, result_name, .{ .decl = .{
             .type = distinct_result_type.*,
             .original_name = null,
@@ -854,7 +854,7 @@ fn constructSymbolTree(
         if (distinct_partial_result_type.eql(distinct_result_type.*)) {
             distinct_partial_result_type.* = .{ .reference = .{ .name = result_name } };
         } else {
-            const partial_result_name = try std.fmt.allocPrint(arena, "{s}.PartialResult", .{request.method});
+            const partial_result_name = try arena.print("{s}.PartialResult", .{request.method});
             try symbols.putNoClobber(gpa, partial_result_name, .{ .decl = .{
                 .type = distinct_partial_result_type.*,
                 .original_name = null,

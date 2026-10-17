@@ -127,11 +127,11 @@ pub fn run(
                                 .method_not_found,
                                 .invalid_params,
                                 .internal_error,
-                                @enumFromInt(@intFromEnum(types.ErrorCodes.ServerNotInitialized)),
-                                @enumFromInt(@intFromEnum(types.LSPErrorCodes.RequestFailed)),
-                                @enumFromInt(@intFromEnum(types.LSPErrorCodes.ServerCancelled)),
-                                @enumFromInt(@intFromEnum(types.LSPErrorCodes.ContentModified)),
-                                @enumFromInt(@intFromEnum(types.LSPErrorCodes.RequestCancelled)),
+                                @fromBackingInt(@backingInt(types.ErrorCodes.ServerNotInitialized)),
+                                @fromBackingInt(@backingInt(types.LSPErrorCodes.RequestFailed)),
+                                @fromBackingInt(@backingInt(types.LSPErrorCodes.ServerCancelled)),
+                                @fromBackingInt(@backingInt(types.LSPErrorCodes.ContentModified)),
+                                @fromBackingInt(@backingInt(types.LSPErrorCodes.RequestCancelled)),
                             },
                         ) |zig_err, new_code| {
                             if (err == zig_err) {

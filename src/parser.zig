@@ -16,7 +16,10 @@ pub fn UnionParser(comptime T: type) type {
         }
 
         pub fn jsonParseFromValue(allocator: std.mem.Allocator, source: std.json.Value, options: std.json.ParseOptions) std.json.ParseFromValueError!T {
-            inline for (comptime std.meta.fieldNames(T), comptime std.meta.fieldTypes(T)) |field_name, FieldType| {
+            const type_info = @typeInfo(T).@"union";
+            const field_names = type_info.field_names;
+            const field_types = type_info.field_types;
+            inline for (field_names, field_types) |field_name, FieldType| {
                 if (std.json.parseFromValueLeaky(FieldType, allocator, source, options)) |result| {
                     return @unionInit(T, field_name, result);
                 } else |_| {}
@@ -115,7 +118,7 @@ pub fn EnumCustomStringValues(comptime T: type, comptime contains_empty_enum: bo
 
         const kvs = build_kvs: {
             const KV = struct { []const u8, T };
-            const field_names = std.meta.fieldNames(T);
+            const field_names = @typeInfo(T).@"union".field_names;
             var kvs_array: [field_names.len - 1]KV = undefined;
             for (field_names[0 .. field_names.len - 1], &kvs_array) |field_name, *kv| {
                 if (contains_empty_enum and std.mem.eql(u8, field_name, "empty")) {
@@ -293,7 +296,7 @@ test EnumCustomStringValues {
 pub fn EnumStringifyAsInt(comptime T: type) type {
     return struct {
         pub fn jsonStringify(self: T, stream: anytype) @TypeOf(stream.*).Error!void {
-            try stream.write(@intFromEnum(self));
+            try stream.write(@backingInt(self));
         }
     };
 }
@@ -334,7 +337,7 @@ test EnumStringifyAsInt {
         try std.testing.expectFmt("0", "{f}", .{std.json.fmt(E.foo, .{})});
         try std.testing.expectFmt("3", "{f}", .{std.json.fmt(E.bar, .{})});
         try std.testing.expectFmt("4", "{f}", .{std.json.fmt(E.baz, .{})});
-        try std.testing.expectFmt("7", "{f}", .{std.json.fmt(@as(E, @enumFromInt(7)), .{})});
+        try std.testing.expectFmt("7", "{f}", .{std.json.fmt(@as(E, @fromBackingInt(@intCast(7))), .{})});
     }
 }
 

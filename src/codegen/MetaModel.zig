@@ -296,7 +296,8 @@ pub const Type = union(TypeKind) {
         const kind = source.object.get("kind") orelse return error.MissingField;
         if (kind != .string) return error.UnexpectedToken;
 
-        inline for (comptime std.meta.fieldNames(Type), comptime std.meta.fieldTypes(Type)) |field_name, FieldType| {
+        const type_info = @typeInfo(Type).@"union";
+        inline for (type_info.field_names, type_info.field_types) |field_name, FieldType| {
             if (std.mem.eql(u8, kind.string, field_name)) {
                 return @unionInit(Type, field_name, try std.json.parseFromValueLeaky(FieldType, allocator, source, options));
             }

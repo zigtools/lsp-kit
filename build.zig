@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
             .single_threaded = true,
         }),
     });
-    // The metaModel.json file should be removed once https://github.com/ziglang/zig/issues/17895 has been resolved.
+    // The metaModel.json file should be removed once https://codeberg.org/ziglang/zig/issues/32041 has been resolved.
     exe.root_module.addAnonymousImport("meta-model", .{ .root_source_file = b.path("metaModel.json") });
 
     const run_codegen = b.addRunArtifact(exe);

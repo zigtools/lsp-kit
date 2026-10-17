@@ -103,7 +103,7 @@ pub const Handler = struct {
         };
 
         // Tries to validate that our server capabilities are actually implemented.
-        if (@import("builtin").mode == .Debug) {
+        if (@import("builtin").mode == .debug) {
             lsp.basic_server.validateServerCapabilities(Handler, server_capabilities);
         }
 

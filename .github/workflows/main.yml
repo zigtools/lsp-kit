@@ -23,31 +23,14 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@v2
         with:
-          version: master
+          version: 0.17.0
 
-      - name: Setup kcov
-        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04'
-        run: |
-          wget https://github.com/SimonKagstrom/kcov/releases/download/v42/kcov-amd64.tar.gz
-          sudo tar xf kcov-amd64.tar.gz -C /
-
-      - name: Check Formatting
-        run: zig fmt --ast-check --check src
-
-      - name: Run Tests
-        run: zig build test --summary all
-
-      - name: Build Examples
-        run: zig build --summary all
-
-      - name: Collect Coverage
-        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04'
-        run: zig build coverage -Duse-llvm --summary all
-
-      - name: Upload coverage reports to Codecov
-        if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-22.04'
-        uses: codecov/codecov-action@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          directory: zig-out/coverage/kcov-merged
-          fail_ci_if_error: true
-          verbose: true
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Run CI
+        run: zig build ci --summary all

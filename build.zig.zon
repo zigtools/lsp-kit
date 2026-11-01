@@ -1,5 +1,5 @@
 .{
-    .name = .lsp_kit,
+    .name = .blitzmcp,
     .version = "0.1.0",
     .minimum_zig_version = "0.17.0",
     .dependencies = .{},
@@ -7,9 +7,8 @@
         "build.zig",
         "build.zig.zon",
         "src",
-        "metaModel.json",
         "LICENSE",
         "README.md",
     },
-    .fingerprint = 0x91a538b12fcf2f6e, // Changing this has security and trust implications.
+    .fingerprint = 0xc20b17706dbfbe47, // Changing this has security and trust implications.
 }

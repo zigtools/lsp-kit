@@ -10,7 +10,8 @@
 //! | `[]const u8`, `[N]u8`             | `{"type":"string"}`                             |
 //! | slices and arrays                 | `{"type":"array","items":...}`                  |
 //! | `enum`                            | `{"type":"string","enum":[...]}`                |
-//! | `?T`                              | schema of `T`, the field is not required        |
+//! | `?T` (struct field)               | schema of `T`, the field is not required        |
+//! | `?T` (elsewhere, e.g. array item) | `{"anyOf":[<T>,{"type":"null"}]}`               |
 //! | `struct`                          | `{"type":"object","properties":...,"required":...}` |
 //! | `std.json.Value`                  | `{}` (any value)                                |
 //!
@@ -68,7 +69,8 @@ fn schemaOf(comptime T: type, comptime description: ?[]const u8) []const u8 {
         },
         .comptime_int => "{\"type\":\"integer\"" ++ desc ++ "}",
         .float, .comptime_float => "{\"type\":\"number\"" ++ desc ++ "}",
-        .optional => |info| schemaOf(info.child, description),
+        // Struct fields unwrap the optional themselves because `null` fields are omitted when serializing.
+        .optional => |info| "{\"anyOf\":[" ++ schemaOf(info.child, null) ++ ",{\"type\":\"null\"}]" ++ desc ++ "}",
         .@"enum" => |info| blk: {
             var values: []const u8 = "";
             for (info.field_names, 0..) |name, i| {
@@ -99,8 +101,9 @@ fn schemaOf(comptime T: type, comptime description: ?[]const u8) []const u8 {
             for (info.field_names, info.field_types, info.field_attrs) |name, FieldType, attrs| {
                 if (attrs.@"comptime") continue;
                 const field_description = fieldDescription(T, name);
-                properties = properties ++ (if (properties.len == 0) "" else ",") ++ jsonString(name) ++ ":" ++ schemaOf(FieldType, field_description);
                 const is_optional = @typeInfo(FieldType) == .optional;
+                const PropertyType = if (is_optional) @typeInfo(FieldType).optional.child else FieldType;
+                properties = properties ++ (if (properties.len == 0) "" else ",") ++ jsonString(name) ++ ":" ++ schemaOf(PropertyType, field_description);
                 if (!is_optional and attrs.default_value_ptr == null) {
                     required = required ++ (if (required.len == 0) "" else ",") ++ jsonString(name);
                 }
@@ -111,6 +114,60 @@ fn schemaOf(comptime T: type, comptime description: ?[]const u8) []const u8 {
         .@"union" => @compileError("unable to generate a JSON schema for the union " ++ @typeName(T) ++ "; declare `pub const json_schema` on it"),
         else => @compileError("unable to generate a JSON schema for " ++ @typeName(T)),
     };
+}
+
+/// Returns the path of the first optional struct field inside `T` that has no
+/// default value, or `null` if there is none.
+///
+/// `std.json` fails to parse a struct if such a field is missing, even though
+/// the generated schema does not list it as required. Types that are parsed from
+/// client input (e.g. tool arguments) should give every optional field a default.
+pub fn findOptionalWithoutDefault(comptime T: type) ?[]const u8 {
+    @setEvalBranchQuota(100_000);
+    return comptime findOptionalWithoutDefaultInner(T, @typeName(T), &.{});
+}
+
+fn findOptionalWithoutDefaultInner(comptime T: type, comptime path: []const u8, comptime visited: []const type) ?[]const u8 {
+    for (visited) |V| if (V == T) return null;
+    const next_visited = visited ++ [1]type{T};
+    switch (@typeInfo(T)) {
+        .optional => |info| return findOptionalWithoutDefaultInner(info.child, path, next_visited),
+        .pointer => |info| return findOptionalWithoutDefaultInner(info.child, path, next_visited),
+        .array => |info| return findOptionalWithoutDefaultInner(info.child, path, next_visited),
+        .@"struct" => |info| {
+            if (info.is_tuple or @hasDecl(T, "json_schema")) return null;
+            for (info.field_names, info.field_types, info.field_attrs) |name, FieldType, attrs| {
+                if (attrs.@"comptime") continue;
+                const field_path = path ++ "." ++ name;
+                if (@typeInfo(FieldType) == .optional and attrs.default_value_ptr == null) return field_path;
+                if (findOptionalWithoutDefaultInner(FieldType, field_path, next_visited)) |found| return found;
+            }
+            return null;
+        },
+        else => return null,
+    }
+}
+
+test findOptionalWithoutDefault {
+    const Ok = struct {
+        a: []const u8,
+        b: ?u32 = null,
+        nested: []const struct { c: ?bool = null },
+    };
+    try std.testing.expectEqual(null, comptime findOptionalWithoutDefault(Ok));
+
+    const Inner = struct { c: ?bool };
+    const Bad = struct {
+        a: []const u8,
+        nested: ?[]const Inner = null,
+    };
+    try std.testing.expectEqualStrings(@typeName(Bad) ++ ".nested.c", comptime findOptionalWithoutDefault(Bad).?);
+
+    const Recursive = struct {
+        children: []const @This(),
+        value: ?u32 = null,
+    };
+    try std.testing.expectEqual(null, comptime findOptionalWithoutDefault(Recursive));
 }
 
 fn fieldDescription(comptime T: type, comptime field_name: []const u8) ?[]const u8 {
@@ -158,7 +215,11 @@ test generate {
     try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":0}", generate(u8));
     try std.testing.expectEqualStrings("{\"type\":\"number\"}", generate(f64));
     try std.testing.expectEqualStrings("{\"type\":\"string\"}", generate([]const u8));
-    try std.testing.expectEqualStrings("{\"type\":\"string\"}", generate(?[]const u8));
+    try std.testing.expectEqualStrings("{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}", generate(?[]const u8));
+    try std.testing.expectEqualStrings(
+        "{\"type\":\"array\",\"items\":{\"anyOf\":[{\"type\":\"integer\",\"minimum\":0},{\"type\":\"null\"}]}}",
+        generate([]const ?u32),
+    );
     try std.testing.expectEqualStrings("{\"type\":\"array\",\"items\":{\"type\":\"string\"}}", generate([]const []const u8));
     try std.testing.expectEqualStrings("{\"type\":\"string\",\"enum\":[\"a\",\"b\"]}", generate(enum { a, b }));
     try std.testing.expectEqualStrings("{}", generate(std.json.Value));

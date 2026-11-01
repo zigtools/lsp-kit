@@ -119,7 +119,7 @@ pub fn readJsonMessage(transport: *Transport, io: std.Io, allocator: std.mem.All
     return try transport.vtable.readJsonMessage(transport, io, allocator);
 }
 
-pub fn readJsonMessageUncancelable(transport: *Transport, io: std.Io, allocator: std.mem.Allocator) !void {
+pub fn readJsonMessageUncancelable(transport: *Transport, io: std.Io, allocator: std.mem.Allocator) ![]u8 {
     const old_cancel_protect = io.swapCancelProtection(.blocked);
     defer _ = io.swapCancelProtection(old_cancel_protect);
     return Transport.readJsonMessage(transport, io, allocator) catch |err| switch (err) {
@@ -392,4 +392,22 @@ test "Stream - write helpers emit minified messages" {
     , aw.written());
 
     try std.testing.expectError(error.EndOfStream, transport.readJsonMessage(io, std.testing.allocator));
+}
+
+test "Stream - read and write uncancelable" {
+    var input: std.Io.Reader = .fixed("{\"a\":1}\n");
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer aw.deinit();
+
+    var stream: Stream = .init(&input, &aw.writer);
+    const transport = &stream.transport;
+    const io = std.testing.io;
+
+    const message = try transport.readJsonMessageUncancelable(io, std.testing.allocator);
+    defer std.testing.allocator.free(message);
+    try std.testing.expectEqualStrings("{\"a\":1}", message);
+    try std.testing.expectError(error.EndOfStream, transport.readJsonMessageUncancelable(io, std.testing.allocator));
+
+    try transport.writeJsonMessageUncancelable(io, message);
+    try std.testing.expectEqualStrings("{\"a\":1}\n", aw.written());
 }

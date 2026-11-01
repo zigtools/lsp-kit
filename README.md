@@ -81,6 +81,8 @@ pub fn main(init: std.process.Init) !void {
 - Handler functions request their arguments by type: the handler (`*Handler`), an arena (`std.mem.Allocator`), the request context (`*mcp.Context`) and the parsed params/arguments.
 - Tool errors (including invalid arguments) are returned as a `CallToolResult` with `isError = true`. Errors from protocol level methods become JSON-RPC errors (`error.InvalidParams` → `-32602`, `error.ResourceNotFound` → `-32002`, …).
 - Tools that return a struct produce `structuredContent` and an `outputSchema`.
+- Optional fields of tool and prompt arguments must have a default (e.g. `?u32 = null`); this is enforced at compile time.
+- Results and notifications are checked before sending: non-finite floats and text that is not valid UTF-8 are reported as errors instead of producing invalid JSON.
 - `Server.handleMessage` is independent of the framing so that it can be reused by other transports.
 
 See [`examples/stdio_server.zig`](examples/stdio_server.zig) for a complete server. Try it with the MCP Inspector:

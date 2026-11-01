@@ -73,9 +73,10 @@ pub const Context = struct {
     /// reported message.
     error_message: ?[]const u8 = null,
 
-    pub const SendError = Transport.WriteError || std.mem.Allocator.Error;
+    pub const SendError = Transport.WriteError || std.mem.Allocator.Error || JsonValueError;
 
     pub fn sendNotification(ctx: *Context, method: []const u8, comptime Params: type, params: Params) SendError!void {
+        try checkJson(params);
         try ctx.transport.writeNotification(ctx.io, ctx.arena, method, Params, params, stringify_options);
     }
 
@@ -350,6 +351,13 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
             } else self.builtin(method, ctx, params);
 
             if (result_or_error) |result| {
+                checkJson(result) catch |err| {
+                    log.warn("invalid result for '{s}' request: {s}", .{ method, jsonValueErrorMessage(err) });
+                    return ctx.transport.writeErrorResponse(ctx.io, ctx.arena, request.id, .{
+                        .code = .internal_error,
+                        .message = try std.fmt.allocPrint(ctx.arena, "Invalid result: {s}", .{jsonValueErrorMessage(err)}),
+                    }, stringify_options);
+                };
                 try ctx.transport.writeResponse(ctx.io, ctx.arena, request.id, M.Result, result, stringify_options);
             } else |err| {
                 if (err == error.OutOfMemory) return error.OutOfMemory;
@@ -427,6 +435,7 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
                 if (ctx.error_message) |message| return toolError(ctx.arena, "{s}", .{message});
                 return toolError(ctx.arena, "{s}", .{@errorName(err)});
             };
+            checkJson(result) catch |err| return toolError(ctx.arena, "Invalid tool result: {s}", .{jsonValueErrorMessage(err)});
             return try toCallToolResult(ctx.arena, result);
         }
 
@@ -528,6 +537,79 @@ fn promptArguments(comptime Args: type) []const types.PromptArgument {
     }
     const final = list;
     return &final;
+}
+
+pub const JsonValueError = error{
+    /// `inf` and `nan` cannot be represented in JSON.
+    NonFiniteNumber,
+    /// `std.json` serializes byte strings that are not valid UTF-8 as arrays of numbers.
+    InvalidUtf8,
+};
+
+fn jsonValueErrorMessage(err: JsonValueError) []const u8 {
+    return switch (err) {
+        error.NonFiniteNumber => "contains a non-finite number (inf or nan), which cannot be represented in JSON",
+        error.InvalidUtf8 => "contains a string that is not valid UTF-8",
+    };
+}
+
+/// Verifies that `value` serializes to the JSON its schema promises.
+fn checkJson(value: anytype) JsonValueError!void {
+    const T = @TypeOf(value);
+    if (T == std.json.Value) {
+        switch (value) {
+            .float => |float| if (!std.math.isFinite(float)) return error.NonFiniteNumber,
+            .string, .number_string => |string| try checkString(string),
+            .array => |array| for (array.items) |item| try checkJson(item),
+            .object => |object| for (object.keys(), object.values()) |key, item| {
+                try checkString(key);
+                try checkJson(item);
+            },
+            .null, .bool, .integer => {},
+        }
+        return;
+    }
+    switch (@typeInfo(T)) {
+        .float => if (!std.math.isFinite(value)) return error.NonFiniteNumber,
+        .comptime_float => if (!std.math.isFinite(@as(f64, value))) return error.NonFiniteNumber,
+        .optional => if (value) |payload| try checkJson(payload),
+        .array => |info| if (info.child == u8) try checkString(&value) else for (value) |item| try checkJson(item),
+        .pointer => |info| switch (info.size) {
+            .slice => if (info.child == u8) try checkString(value) else for (value) |item| try checkJson(item),
+            .one => switch (@typeInfo(info.child)) {
+                .@"opaque" => {},
+                else => try checkJson(value.*),
+            },
+            .many, .c => {},
+        },
+        .@"struct" => |info| {
+            // The serialization of types with a custom `jsonStringify` is unknown.
+            if (std.meta.hasFn(T, "jsonStringify")) return;
+            inline for (info.field_names) |name| try checkJson(@field(value, name));
+        },
+        .@"union" => |info| if (info.tag_type != null) switch (value) {
+            inline else => |payload| try checkJson(payload),
+        },
+        else => {},
+    }
+}
+
+fn checkString(string: []const u8) JsonValueError!void {
+    if (!std.unicode.utf8ValidateSlice(string)) return error.InvalidUtf8;
+}
+
+test checkJson {
+    try checkJson(.{ .a = 1.5, .b = "text", .c = @as(?f64, null) });
+    try checkJson(types.ContentBlock.initText("héllo"));
+
+    try std.testing.expectError(error.NonFiniteNumber, checkJson(std.math.inf(f64)));
+    try std.testing.expectError(error.NonFiniteNumber, checkJson(.{ .xs = &[_]f32{ 1, std.math.nan(f32) } }));
+    try std.testing.expectError(error.InvalidUtf8, checkJson(types.ContentBlock.initText("caf\xe9")));
+
+    var object: std.json.ObjectMap = .empty;
+    defer object.deinit(std.testing.allocator);
+    try object.put(std.testing.allocator, "k", .{ .float = std.math.inf(f64) });
+    try std.testing.expectError(error.NonFiniteNumber, checkJson(std.json.Value{ .object = object }));
 }
 
 fn toolError(arena: std.mem.Allocator, comptime fmt: []const u8, args: anytype) std.mem.Allocator.Error!types.CallToolResult {
@@ -685,6 +767,10 @@ fn ArgsType(comptime Handler: type, comptime def: anytype) type {
         Args = P;
         found = true;
     }
+    if (schema.findOptionalWithoutDefault(Args)) |field| {
+        @compileError("'" ++ def.name ++ "': the optional field `" ++ field ++ "` must have a default value (e.g. `= null`), " ++
+            "otherwise parsing fails when the client omits it");
+    }
     if (@hasField(@TypeOf(def), "Args") and def.Args != Args) {
         @compileError(std.fmt.comptimePrint("'{s}': `.Args = {}` does not match the arguments parameter type {}", .{ def.name, def.Args, Args }));
     }
@@ -778,12 +864,16 @@ const TestServer = Server(TestHandler, .{
 });
 
 fn expectExchange(handler: *TestHandler, input: []const u8, expected_output: []const u8) !void {
+    try expectServerExchange(TestServer, handler, input, expected_output);
+}
+
+fn expectServerExchange(comptime S: type, handler: anytype, input: []const u8, expected_output: []const u8) !void {
     var reader: std.Io.Reader = .fixed(input);
     var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer aw.deinit();
 
     var stream: Transport.Stream = .init(&reader, &aw.writer);
-    var server: TestServer = .init(handler);
+    var server: S = .init(handler);
     try server.run(std.testing.io, std.testing.allocator, &stream.transport);
 
     try std.testing.expectEqualStrings(expected_output, aw.written());
@@ -884,6 +974,46 @@ test "errors and misc" {
         \\{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid Request"}}
         \\{"jsonrpc":"2.0","id":4,"error":{"code":-32600,"message":"Invalid Request"}}
         \\{"jsonrpc":"2.0","id":5,"result":{}}
+        \\
+    );
+}
+
+test "results that cannot be represented in JSON" {
+    const Handler = struct {
+        fn ratio() struct { ratio: f64 } {
+            return .{ .ratio = std.math.inf(f64) };
+        }
+        fn latin1() []const u8 {
+            return "caf\xe9";
+        }
+        fn progress(ctx: *Context) !void {
+            try ctx.sendProgress(1, std.math.nan(f64), null);
+        }
+        pub fn @"resources/read"() types.ReadResourceResult {
+            return .{ .contents = &.{.{ .text = .{ .uri = "file:///a", .text = "caf\xe9" } }} };
+        }
+    };
+    const S = Server(Handler, .{
+        .name = "s",
+        .version = "0",
+        .tools = .{
+            .{ .name = "ratio", .call = Handler.ratio },
+            .{ .name = "latin1", .call = Handler.latin1 },
+            .{ .name = "progress", .call = Handler.progress },
+        },
+    });
+    var handler: Handler = .{};
+    try expectServerExchange(S, &handler,
+        \\{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ratio"}}
+        \\{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"latin1"}}
+        \\{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"progress","_meta":{"progressToken":1}}}
+        \\{"jsonrpc":"2.0","id":4,"method":"resources/read","params":{"uri":"file:///a"}}
+        \\
+    ,
+        \\{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"Invalid tool result: contains a non-finite number (inf or nan), which cannot be represented in JSON"}],"isError":true}}
+        \\{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"Invalid tool result: contains a string that is not valid UTF-8"}],"isError":true}}
+        \\{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"NonFiniteNumber"}],"isError":true}}
+        \\{"jsonrpc":"2.0","id":4,"error":{"code":-32603,"message":"Invalid result: contains a string that is not valid UTF-8"}}
         \\
     );
 }

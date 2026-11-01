@@ -153,13 +153,9 @@ pub const JsonRPCMessage = union(enum) {
             try stream.objectField("jsonrpc");
             try stream.write("2.0");
 
-            if (response.id) |id| {
-                try stream.objectField("id");
-                try stream.write(id);
-            } else if (stream.options.emit_null_optional_fields) {
-                try stream.objectField("id");
-                try stream.write(null);
-            }
+            // JSON-RPC requires the "id" field in every response, even if it is null.
+            try stream.objectField("id");
+            try stream.write(response.id);
 
             switch (response.result_or_error) {
                 inline else => |value, tag| {
@@ -745,7 +741,7 @@ pub const JsonRPCMessage = union(enum) {
         , "{f}", .{std.json.fmt(JsonRPCMessage{ .notification = .{ .method = "exit", .params = .null } }, .{ .emit_null_optional_fields = true })});
 
         try std.testing.expectFmt(
-            \\{"jsonrpc":"2.0","result":null}
+            \\{"jsonrpc":"2.0","id":null,"result":null}
         , "{f}", .{std.json.fmt(JsonRPCMessage{ .response = .{ .id = null, .result_or_error = .{ .result = null } } }, .{ .emit_null_optional_fields = false })});
         try std.testing.expectFmt(
             \\{"jsonrpc":"2.0","id":null,"result":null}

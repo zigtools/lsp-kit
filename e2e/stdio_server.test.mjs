@@ -13,7 +13,6 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import {
   ErrorCode,
   LATEST_PROTOCOL_VERSION,
-  LoggingMessageNotificationSchema,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
 
@@ -27,8 +26,9 @@ if (!serverPath) {
 let client;
 /** @type {StdioClientTransport} */
 let transport;
-const logMessages = [];
 let negotiatedProtocolVersion;
+/** Every JSON-RPC message received from the server, in wire order. */
+const received = [];
 
 before(async () => {
   transport = new StdioClientTransport({ command: serverPath, stderr: "inherit" });
@@ -37,10 +37,17 @@ before(async () => {
     negotiatedProtocolVersion = version;
   };
   client = new Client({ name: "blitzmcp-e2e", version: "0.0.0" });
-  client.setNotificationHandler(LoggingMessageNotificationSchema, (notification) => {
-    logMessages.push(notification.params);
-  });
   await client.connect(transport);
+  // Record raw messages. Assertions on notifications use this instead of SDK
+  // callbacks: the SDK dispatches notifications in a microtask but responses
+  // synchronously, so a progress notification that arrives in the same read as
+  // its response is dropped by the client ("unknown token") even though the
+  // server sent it first.
+  const onmessage = transport.onmessage;
+  transport.onmessage = (message, extra) => {
+    received.push(message);
+    onmessage?.(message, extra);
+  };
 });
 
 after(async () => {
@@ -108,24 +115,42 @@ test("tools/call with structured output", async () => {
 test("tools/call with logging and progress", async () => {
   await client.setLoggingLevel("debug");
 
-  const progress = [];
+  const start = received.length;
   const result = await client.callTool(
     { name: "count_words", arguments: { text: "one two  three\nfour" } },
     undefined,
-    { onprogress: (p) => progress.push(p) },
+    // Makes the client send `_meta.progressToken`.
+    { onprogress: () => {} },
   );
 
   assert.equal(result.isError, undefined);
   assert.deepEqual(result.content, [{ type: "text", text: "4" }]);
-  assert.deepEqual(progress, [{ progress: 1, total: 1, message: "done" }]);
-  assert.deepEqual(logMessages.at(-1), { level: "info", data: "counted 4 words" });
+
+  // The server must send the notifications before the response.
+  const messages = received.slice(start);
+  const response = messages.at(-1);
+  assert.ok("result" in response, "the last message is the response");
+  assert.deepEqual(
+    messages.slice(0, -1).map((m) => [m.method, m.params]),
+    [
+      [
+        "notifications/progress",
+        { progressToken: response.id, progress: 1, total: 1, message: "done" },
+      ],
+      ["notifications/message", { level: "info", data: "counted 4 words" }],
+    ],
+  );
 });
 
 test("logging/setLevel filters log messages", async () => {
   await client.setLoggingLevel("error");
-  const before = logMessages.length;
+  const start = received.length;
   await client.callTool({ name: "count_words", arguments: { text: "a b" } });
-  assert.equal(logMessages.length, before);
+  // No progress token was requested, so the response is the only message.
+  assert.deepEqual(
+    received.slice(start).map((m) => m.method ?? "response"),
+    ["response"],
+  );
   await client.setLoggingLevel("debug");
 });
 

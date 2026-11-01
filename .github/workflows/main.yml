@@ -35,3 +35,33 @@ jobs:
 
       - name: Run CI
         run: zig build ci -Doptimize=${{ matrix.optimize }} --summary all
+
+  fuzz:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.0
+
+      # `zig build test --fuzz` exits with code 0 even when it finds a failing
+      # input, so check for the saved input explicitly.
+      - name: Fuzz
+        shell: bash
+        run: |
+          rm -f .zig-cache/f/crash
+          zig build test --fuzz=30K --summary all
+          if [ -e .zig-cache/f/crash ]; then
+            echo "::error::Fuzzing found a failing input (uploaded as the fuzz-crash artifact)"
+            exit 1
+          fi
+
+      - name: Upload failing input
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-crash
+          path: .zig-cache/f/crash

@@ -84,6 +84,10 @@ pub fn main(init: std.process.Init) !void {
 - Optional fields of tool and prompt arguments must have a default (e.g. `?u32 = null`); this is enforced at compile time.
 - Results and notifications are checked before sending: non-finite floats and text that is not valid UTF-8 are reported as errors instead of producing invalid JSON.
 - `Server.handleMessage` is independent of the framing so that it can be reused by other transports.
+- Messages larger than `max_message_len` (16 MiB by default) are skipped and answered with an error, and running out of memory while handling a request is reported to the client instead of stopping the server.
+
+> [!NOTE]
+> The MCP TypeScript SDK client (tested with 1.32.2) runs notification handlers in a microtask but handles responses synchronously. If a progress notification arrives in the same read as its response, the client drops it with "unknown token", even though the server sent it first. This affects any MCP server, not only this library.
 
 See [`examples/stdio_server.zig`](examples/stdio_server.zig) for a complete server. Try it with the MCP Inspector:
 

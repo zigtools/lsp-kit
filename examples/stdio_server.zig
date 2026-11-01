@@ -59,8 +59,9 @@ const Handler = struct {
     };
 
     // Returning a struct produces both `structuredContent` and an `outputSchema`.
-    fn increment(handler: *Handler, args: IncrementArgs) struct { value: i64 } {
-        handler.counter += args.by;
+    fn increment(handler: *Handler, ctx: *mcp.Context, args: IncrementArgs) !struct { value: i64 } {
+        handler.counter = std.math.add(i64, handler.counter, args.by) catch
+            return ctx.fail(error.Overflow, "The counter would overflow", .{});
         return .{ .value = handler.counter };
     }
 

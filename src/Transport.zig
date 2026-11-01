@@ -24,7 +24,15 @@ pub const VTable = struct {
     writeJsonMessage: *const fn (transport: *Transport, io: std.Io, json_message: []const u8) WriteError!void,
 };
 
-pub const ReadError = std.Io.File.Reader.Error || error{EndOfStream} || std.mem.Allocator.Error;
+pub const ReadError = std.Io.File.Reader.Error || error{
+    EndOfStream,
+    /// The message exceeded the transport's size limit. It has been skipped,
+    /// so reading can continue with the next message.
+    MessageTooLong,
+} || std.mem.Allocator.Error;
+
+/// The default maximum size of a single message in bytes.
+pub const default_max_message_len: usize = 16 * 1024 * 1024;
 pub const WriteError = std.Io.File.Writer.Error;
 
 /// Reads from and writes to a pair of files (usually stdin and stdout) using
@@ -34,6 +42,8 @@ pub const Stdio = struct {
     reader: std.Io.Reader,
     read_from: std.Io.File,
     write_to: std.Io.File,
+    /// Longer messages are skipped and reported as `error.MessageTooLong`.
+    max_message_len: usize = default_max_message_len,
 
     pub fn init(
         /// Must not be empty. Messages may be longer than the buffer.
@@ -60,7 +70,7 @@ pub const Stdio = struct {
         var file_reader: std.Io.File.Reader = .initStreaming(stdio.read_from, io, stdio.reader.buffer);
         file_reader.interface = stdio.reader;
         defer stdio.reader = file_reader.interface;
-        return Transport.readNdjsonMessage(&file_reader.interface, allocator) catch |err| switch (err) {
+        return Transport.readNdjsonMessage(&file_reader.interface, allocator, stdio.max_message_len) catch |err| switch (err) {
             error.ReadFailed => return file_reader.err.?,
             else => |e| return e,
         };
@@ -82,6 +92,8 @@ pub const Stream = struct {
     transport: Transport,
     reader: *std.Io.Reader,
     writer: *std.Io.Writer,
+    /// Longer messages are skipped and reported as `error.MessageTooLong`.
+    max_message_len: usize = default_max_message_len,
 
     pub fn init(reader: *std.Io.Reader, writer: *std.Io.Writer) Stream {
         return .{
@@ -99,7 +111,7 @@ pub const Stream = struct {
     fn readJsonMessage(transport: *Transport, io: std.Io, allocator: std.mem.Allocator) ReadError![]u8 {
         _ = io;
         const stream: *Stream = @fieldParentPtr("transport", transport);
-        return Transport.readNdjsonMessage(stream.reader, allocator) catch |err| switch (err) {
+        return Transport.readNdjsonMessage(stream.reader, allocator, stream.max_message_len) catch |err| switch (err) {
             error.ReadFailed => return error.Unexpected,
             else => |e| return e,
         };
@@ -292,19 +304,31 @@ pub fn ThreadSafe(config: ThreadSafeConfig) type {
 /// a trailing `\r` is stripped. A final message without a trailing newline is
 /// accepted. The message length is not limited by the reader's buffer size.
 ///
+/// A line longer than `max_len` bytes is discarded without buffering it and
+/// `error.MessageTooLong` is returned. The next call continues with the
+/// following line.
+///
 /// The caller owns the returned memory.
 pub fn readNdjsonMessage(
     reader: *std.Io.Reader,
     allocator: std.mem.Allocator,
-) (std.Io.Reader.Error || std.mem.Allocator.Error)![]u8 {
+    max_len: usize,
+) (std.Io.Reader.Error || std.mem.Allocator.Error || error{MessageTooLong})![]u8 {
     var aw: std.Io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
 
     while (true) {
         aw.clearRetainingCapacity();
-        _ = reader.streamDelimiterEnding(&aw.writer, '\n') catch |err| switch (err) {
+        _ = reader.streamDelimiterLimit(&aw.writer, '\n', .limited(max_len +| 1)) catch |err| switch (err) {
             error.WriteFailed => return error.OutOfMemory,
             error.ReadFailed => return error.ReadFailed,
+            error.StreamTooLong => {
+                _ = reader.discardDelimiterExclusive('\n') catch |e| switch (e) {
+                    error.ReadFailed => return error.ReadFailed,
+                };
+                if (reader.bufferedLen() != 0) reader.toss(1); // the '\n' delimiter
+                return error.MessageTooLong;
+            },
         };
         const at_end = reader.bufferedLen() == 0;
         if (!at_end) reader.toss(1); // the '\n' delimiter
@@ -323,19 +347,19 @@ pub fn readNdjsonMessage(
 test readNdjsonMessage {
     var reader: std.Io.Reader = .fixed("{}\n\r\n\n{\"a\":1}\r\n  \n[]");
 
-    const first = try readNdjsonMessage(&reader, std.testing.allocator);
+    const first = try readNdjsonMessage(&reader, std.testing.allocator, default_max_message_len);
     defer std.testing.allocator.free(first);
     try std.testing.expectEqualStrings("{}", first);
 
-    const second = try readNdjsonMessage(&reader, std.testing.allocator);
+    const second = try readNdjsonMessage(&reader, std.testing.allocator, default_max_message_len);
     defer std.testing.allocator.free(second);
     try std.testing.expectEqualStrings("{\"a\":1}", second);
 
-    const third = try readNdjsonMessage(&reader, std.testing.allocator);
+    const third = try readNdjsonMessage(&reader, std.testing.allocator, default_max_message_len);
     defer std.testing.allocator.free(third);
     try std.testing.expectEqualStrings("[]", third);
 
-    try std.testing.expectError(error.EndOfStream, readNdjsonMessage(&reader, std.testing.allocator));
+    try std.testing.expectError(error.EndOfStream, readNdjsonMessage(&reader, std.testing.allocator, default_max_message_len));
 }
 
 test "readNdjsonMessage - message larger than reader buffer" {
@@ -344,11 +368,32 @@ test "readNdjsonMessage - message larger than reader buffer" {
     var buffer: [16]u8 = undefined;
     var limited = input.limited(.unlimited, &buffer);
 
-    const result = try readNdjsonMessage(&limited.interface, std.testing.allocator);
+    const result = try readNdjsonMessage(&limited.interface, std.testing.allocator, default_max_message_len);
     defer std.testing.allocator.free(result);
     try std.testing.expectEqualStrings(message, result);
 
-    try std.testing.expectError(error.EndOfStream, readNdjsonMessage(&limited.interface, std.testing.allocator));
+    try std.testing.expectError(error.EndOfStream, readNdjsonMessage(&limited.interface, std.testing.allocator, default_max_message_len));
+}
+
+test "readNdjsonMessage - message too long" {
+    var input: std.Io.Reader = .fixed("12345\n123456\n" ++ @as([300]u8, @splat('x')) ++ "\n{}\n1234567");
+    var buffer: [4]u8 = undefined;
+    var limited = input.limited(.unlimited, &buffer);
+    const reader = &limited.interface;
+
+    const exact = try readNdjsonMessage(reader, std.testing.allocator, 5);
+    defer std.testing.allocator.free(exact);
+    try std.testing.expectEqualStrings("12345", exact);
+
+    try std.testing.expectError(error.MessageTooLong, readNdjsonMessage(reader, std.testing.allocator, 5));
+    try std.testing.expectError(error.MessageTooLong, readNdjsonMessage(reader, std.testing.allocator, 5));
+
+    const next = try readNdjsonMessage(reader, std.testing.allocator, 5);
+    defer std.testing.allocator.free(next);
+    try std.testing.expectEqualStrings("{}", next);
+
+    try std.testing.expectError(error.MessageTooLong, readNdjsonMessage(reader, std.testing.allocator, 5));
+    try std.testing.expectError(error.EndOfStream, readNdjsonMessage(reader, std.testing.allocator, 5));
 }
 
 /// Writes `json_message` followed by a newline and flushes the writer.

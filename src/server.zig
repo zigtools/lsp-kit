@@ -69,9 +69,10 @@ pub const Context = struct {
     /// The minimum log level requested by the client via `logging/setLevel`.
     /// `null` if the client has not set a level.
     log_level: ?types.LoggingLevel,
-    /// May be set before returning an error to replace the error name in the
-    /// reported message.
+    /// Set by `fail`. Replaces the error name in the reported message if the
+    /// handler returns `error_message_for`.
     error_message: ?[]const u8 = null,
+    error_message_for: ?anyerror = null,
 
     pub const SendError = Transport.WriteError || std.mem.Allocator.Error || JsonValueError;
 
@@ -111,10 +112,19 @@ pub const Context = struct {
         try ctx.log(level, null, try std.fmt.allocPrint(ctx.arena, fmt, args));
     }
 
-    /// Sets `error_message` and returns `err`.
+    /// Returns `err` and reports the formatted message instead of the error
+    /// name if the handler returns `err`.
     pub fn fail(ctx: *Context, err: anyerror, comptime fmt: []const u8, args: anytype) anyerror {
         ctx.error_message = std.fmt.allocPrint(ctx.arena, fmt, args) catch null;
+        ctx.error_message_for = err;
         return err;
+    }
+
+    /// The message to report for `err`. Invalid UTF-8 is replaced with U+FFFD.
+    fn errorMessage(ctx: *Context, err: anyerror) std.mem.Allocator.Error![]const u8 {
+        const matches = if (ctx.error_message_for) |failed| failed == err else false;
+        const message = if (matches) ctx.error_message orelse @errorName(err) else @errorName(err);
+        return sanitizeUtf8(ctx.arena, message);
     }
 };
 
@@ -158,10 +168,6 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
 
     return struct {
         handler: *Handler,
-        /// The protocol version agreed upon during `initialize`.
-        protocol_version: []const u8 = types.latest_protocol_version,
-        /// Whether the client has sent `notifications/initialized`.
-        initialized: bool = false,
         /// The minimum log level requested by the client via `logging/setLevel`.
         log_level: ?types.LoggingLevel = null,
 
@@ -243,10 +249,7 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
         /// with the same version. Otherwise, it responds with the latest version
         /// it supports.
         pub fn negotiateProtocolVersion(requested: []const u8) []const u8 {
-            for (types.supported_protocol_versions) |supported| {
-                if (std.mem.eql(u8, supported, requested)) return supported;
-            }
-            return types.latest_protocol_version;
+            return if (types.isSupportedProtocolVersion(requested)) requested else types.latest_protocol_version;
         }
 
         /// Reads and handles messages until the transport reaches the end of
@@ -255,6 +258,11 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
             while (true) {
                 const json_message = transport.readJsonMessage(io, gpa) catch |err| switch (err) {
                     error.EndOfStream => return,
+                    error.MessageTooLong => {
+                        log.warn("skipped a message that exceeds the transport's size limit", .{});
+                        try writeFallbackError(io, transport, null, .invalid_request, "Message too long");
+                        continue;
+                    },
                     else => |e| return e,
                 };
                 defer gpa.free(json_message);
@@ -266,23 +274,45 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
         /// Handles a single JSON-RPC message. Responses and notifications are
         /// written to `transport`. This function is independent of the
         /// framing so that it can be reused by other transports (e.g. HTTP).
+        ///
+        /// Running out of memory while handling a request is reported to the
+        /// client as an `internal_error` instead of being returned.
         pub fn handleMessage(
             self: *Self,
             io: std.Io,
             gpa: std.mem.Allocator,
             transport: *Transport,
             json_message: []const u8,
-        ) (Transport.WriteError || std.mem.Allocator.Error)!void {
+        ) Transport.WriteError!void {
             var arena_allocator: std.heap.ArenaAllocator = .init(gpa);
             defer arena_allocator.deinit();
-            const arena = arena_allocator.allocator();
 
+            var request_id: ?json_rpc.ID = null;
+            self.handleMessageInner(io, arena_allocator.allocator(), transport, json_message, &request_id) catch |err| switch (err) {
+                error.OutOfMemory => {
+                    log.warn("ran out of memory while handling a message", .{});
+                    try writeFallbackError(io, transport, request_id, .internal_error, "OutOfMemory");
+                },
+                else => |e| return e,
+            };
+        }
+
+        fn handleMessageInner(
+            self: *Self,
+            io: std.Io,
+            arena: std.mem.Allocator,
+            transport: *Transport,
+            json_message: []const u8,
+            request_id: *?json_rpc.ID,
+        ) (Transport.WriteError || std.mem.Allocator.Error)!void {
             const value = std.json.parseFromSliceLeaky(std.json.Value, arena, json_message, .{}) catch |err| {
+                if (err == error.OutOfMemory) return error.OutOfMemory;
                 log.debug("failed to parse message: {}", .{err});
                 return transport.writeErrorResponse(io, arena, null, .{ .code = .parse_error, .message = "Parse error" }, stringify_options);
             };
 
             const message = std.json.parseFromValueLeaky(json_rpc.JsonRPCMessage, arena, value, .{ .ignore_unknown_fields = true }) catch |err| {
+                if (err == error.OutOfMemory) return error.OutOfMemory;
                 log.debug("received an invalid message: {}", .{err});
                 return transport.writeErrorResponse(io, arena, recoverId(value), .{ .code = .invalid_request, .message = "Invalid Request" }, stringify_options);
             };
@@ -298,6 +328,7 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
 
             switch (message) {
                 .request => |request| {
+                    request_id.* = request.id;
                     ctx.request_id = request.id;
                     ctx.progress_token = extractProgressToken(request.params);
                     try self.handleRequest(&ctx, request);
@@ -346,8 +377,12 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
                         \\Actual:   {}
                     , .{ Handler, std.zig.fmtId(method), M.Result, PayloadType(@TypeOf(result)) }));
                 }
-                if (comptime std.mem.eql(u8, method, "initialize")) self.onInitialize(params);
-                break :blk toErrorUnion(result);
+                const result_or_error = toErrorUnion(result);
+                // Keep the server state in sync when the Handler overrides a stateful method.
+                if (comptime std.mem.eql(u8, method, "logging/setLevel")) {
+                    if (result_or_error) |_| self.log_level = params.level else |_| {}
+                }
+                break :blk result_or_error;
             } else self.builtin(method, ctx, params);
 
             if (result_or_error) |result| {
@@ -369,7 +404,7 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
                 }
                 try ctx.transport.writeErrorResponse(ctx.io, ctx.arena, request.id, .{
                     .code = code,
-                    .message = ctx.error_message orelse @errorName(err),
+                    .message = try ctx.errorMessage(err),
                 }, stringify_options);
             }
         }
@@ -384,20 +419,13 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
             return false;
         }
 
-        fn onInitialize(self: *Self, params: types.InitializeRequestParams) void {
-            self.protocol_version = negotiateProtocolVersion(params.protocolVersion);
-        }
-
         fn builtin(
             self: *Self,
             comptime method: []const u8,
             ctx: *Context,
             params: @field(types.client_requests, method).Params,
         ) anyerror!@field(types.client_requests, method).Result {
-            if (comptime std.mem.eql(u8, method, "initialize")) {
-                self.onInitialize(params);
-                return defaultInitializeResult(params);
-            }
+            if (comptime std.mem.eql(u8, method, "initialize")) return defaultInitializeResult(params);
             if (comptime std.mem.eql(u8, method, "ping")) return .{};
             if (comptime std.mem.eql(u8, method, "logging/setLevel")) {
                 self.log_level = params.level;
@@ -432,8 +460,7 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
 
             const result = toErrorUnion(callInjected(self.handler, ctx, def.call, args)) catch |err| {
                 if (err == error.OutOfMemory) return error.OutOfMemory;
-                if (ctx.error_message) |message| return toolError(ctx.arena, "{s}", .{message});
-                return toolError(ctx.arena, "{s}", .{@errorName(err)});
+                return toolError(ctx.arena, "{s}", .{try ctx.errorMessage(err)});
             };
             checkJson(result) catch |err| return toolError(ctx.arena, "Invalid tool result: {s}", .{jsonValueErrorMessage(err)});
             return try toCallToolResult(ctx.arena, result);
@@ -459,10 +486,6 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
         }
 
         fn handleNotification(self: *Self, ctx: *Context, notification: json_rpc.JsonRPCMessage.Notification) void {
-            if (std.mem.eql(u8, notification.method, "notifications/initialized")) {
-                self.initialized = true;
-            }
-
             inline for (comptime std.meta.declarations(types.client_notifications)) |method| {
                 if (@hasDecl(Handler, method) and std.mem.eql(u8, notification.method, method)) {
                     const M = @field(types.client_notifications, method);
@@ -612,6 +635,22 @@ test checkJson {
     try std.testing.expectError(error.NonFiniteNumber, checkJson(std.json.Value{ .object = object }));
 }
 
+/// Writes an error response without using the (possibly exhausted) heap.
+fn writeFallbackError(
+    io: std.Io,
+    transport: *Transport,
+    id: ?json_rpc.ID,
+    code: json_rpc.JsonRPCMessage.Response.Error.Code,
+    message: []const u8,
+) Transport.WriteError!void {
+    var buffer: [4096]u8 = undefined;
+    var fba: std.heap.FixedBufferAllocator = .init(&buffer);
+    transport.writeErrorResponse(io, fba.allocator(), id, .{ .code = code, .message = message }, stringify_options) catch |err| switch (err) {
+        error.OutOfMemory => log.err("failed to report an error: the request id is too long", .{}),
+        else => |e| return e,
+    };
+}
+
 fn toolError(arena: std.mem.Allocator, comptime fmt: []const u8, args: anytype) std.mem.Allocator.Error!types.CallToolResult {
     const content = try arena.alloc(types.ContentBlock, 1);
     content[0] = .initText(try std.fmt.allocPrint(arena, fmt, args));
@@ -687,23 +726,65 @@ fn extractProgressToken(params: ?std.json.Value) ?types.ProgressToken {
     const meta = p.object.get("_meta") orelse return null;
     if (meta != .object) return null;
     const token = meta.object.get("progressToken") orelse return null;
-    return switch (token) {
-        .integer => |number| .{ .number = number },
-        .string => |string| .{ .string = string },
-        else => null,
-    };
+    return parseId(token);
 }
 
 /// Tries to find the request id of an invalid message so that the error
-/// response can be associated with it.
+/// response can be associated with it. Messages without a `"method"` are
+/// responses whose id belongs to the server's own requests, so no id is
+/// recovered for them.
 fn recoverId(value: std.json.Value) ?json_rpc.ID {
     if (value != .object) return null;
-    const id = value.object.get("id") orelse return null;
-    return switch (id) {
-        .integer => |number| .{ .number = number },
-        .string => |string| .{ .string = string },
-        else => null,
-    };
+    if (value.object.get("method") == null) return null;
+    return parseId(value.object.get("id") orelse return null);
+}
+
+fn parseId(value: std.json.Value) ?json_rpc.ID {
+    // `ID.jsonParseFromValue` neither allocates nor reads the options.
+    return json_rpc.ID.jsonParseFromValue(undefined, value, .{}) catch null;
+}
+
+test recoverId {
+    const parse = struct {
+        fn parse(arena: std.mem.Allocator, json: []const u8) !std.json.Value {
+            return std.json.parseFromSliceLeaky(std.json.Value, arena, json, .{});
+        }
+    }.parse;
+    var arena_allocator: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_allocator.deinit();
+    const arena = arena_allocator.allocator();
+
+    try std.testing.expectEqual(json_rpc.ID{ .number = 3 }, recoverId(try parse(arena, "{\"id\":3,\"method\":5}")).?);
+    try std.testing.expectEqualStrings("a", recoverId(try parse(arena, "{\"id\":\"a\",\"method\":\"x\"}")).?.string);
+    try std.testing.expectEqual(null, recoverId(try parse(arena, "{\"id\":3,\"result\":1,\"error\":{}}")));
+    try std.testing.expectEqual(null, recoverId(try parse(arena, "{\"id\":true,\"method\":\"x\"}")));
+}
+
+/// Replaces each byte of an invalid UTF-8 sequence with U+FFFD so that `std.json` serializes
+/// the text as a string.
+fn sanitizeUtf8(arena: std.mem.Allocator, text: []const u8) std.mem.Allocator.Error![]const u8 {
+    if (std.unicode.utf8ValidateSlice(text)) return text;
+    var result: std.ArrayList(u8) = .empty;
+    var i: usize = 0;
+    while (i < text.len) {
+        const len = std.unicode.utf8ByteSequenceLength(text[i]) catch 0;
+        if (len != 0 and i + len <= text.len and std.unicode.utf8ValidateSlice(text[i..][0..len])) {
+            try result.appendSlice(arena, text[i..][0..len]);
+            i += len;
+        } else {
+            try result.appendSlice(arena, "\u{FFFD}");
+            i += 1;
+        }
+    }
+    return result.items;
+}
+
+test sanitizeUtf8 {
+    var arena_allocator: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_allocator.deinit();
+    const arena = arena_allocator.allocator();
+    try std.testing.expectEqualStrings("ok", try sanitizeUtf8(arena, "ok"));
+    try std.testing.expectEqualStrings("caf\u{FFFD}!\u{FFFD}\u{FFFD}", try sanitizeUtf8(arena, "caf\xe9!\xf0\x9f"));
 }
 
 // ----------------------------------------------------------------------------
@@ -1016,4 +1097,84 @@ test "results that cannot be represented in JSON" {
         \\{"jsonrpc":"2.0","id":4,"error":{"code":-32603,"message":"Invalid result: contains a string that is not valid UTF-8"}}
         \\
     );
+}
+
+test "error handling" {
+    const Handler = struct {
+        levels_set: u32 = 0,
+
+        fn latin1Error(ctx: *Context) !void {
+            return ctx.fail(error.FileNotFound, "cannot open caf\xe9", .{});
+        }
+        fn staleMessage(ctx: *Context) !void {
+            fallback(ctx) catch {};
+            return error.AccessDenied;
+        }
+        fn fallback(ctx: *Context) !void {
+            return ctx.fail(error.FileNotFound, "x missing", .{});
+        }
+        fn huge() error{OutOfMemory}![]const u8 {
+            return error.OutOfMemory;
+        }
+        fn debugLog(ctx: *Context) !void {
+            try ctx.log(.debug, null, "hidden");
+            try ctx.log(.@"error", null, "shown");
+        }
+        pub fn @"logging/setLevel"(handler: *@This()) types.EmptyResult {
+            handler.levels_set += 1;
+            return .{};
+        }
+    };
+    const S = Server(Handler, .{
+        .name = "s",
+        .version = "0",
+        .tools = .{
+            .{ .name = "latin1Error", .call = Handler.latin1Error },
+            .{ .name = "staleMessage", .call = Handler.staleMessage },
+            .{ .name = "huge", .call = Handler.huge },
+            .{ .name = "debugLog", .call = Handler.debugLog },
+        },
+    });
+
+    var handler: Handler = .{};
+    try expectServerExchange(S, &handler,
+        \\{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"latin1Error"}}
+        \\{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"staleMessage"}}
+        \\{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"huge"}}
+        \\{"jsonrpc":"2.0","id":4,"method":"logging/setLevel","params":{"level":"warning"}}
+        \\{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"debugLog"}}
+        \\{"jsonrpc":"2.0","id":6,"result":{},"error":{"code":1,"message":"x"}}
+        \\
+    , "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"cannot open caf\u{FFFD}\"}],\"isError\":true}}\n" ++
+        \\{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"AccessDenied"}],"isError":true}}
+        \\{"jsonrpc":"2.0","id":3,"error":{"code":-32603,"message":"OutOfMemory"}}
+        \\{"jsonrpc":"2.0","id":4,"result":{}}
+        \\{"jsonrpc":"2.0","method":"notifications/message","params":{"level":"error","data":"shown"}}
+        \\{"jsonrpc":"2.0","id":5,"result":{"content":[]}}
+        \\{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Invalid Request"}}
+        \\
+    );
+    try std.testing.expectEqual(1, handler.levels_set);
+}
+
+test "message too long" {
+    var handler: TestHandler = .{};
+    var reader: std.Io.Reader = .fixed(
+        \\{"jsonrpc":"2.0","id":1,"method":"ping","params":{"padding":"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"}}
+        \\{"jsonrpc":"2.0","id":2,"method":"ping"}
+        \\
+    );
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer aw.deinit();
+
+    var stream: Transport.Stream = .init(&reader, &aw.writer);
+    stream.max_message_len = 64;
+    var server: TestServer = .init(&handler);
+    try server.run(std.testing.io, std.testing.allocator, &stream.transport);
+
+    try std.testing.expectEqualStrings(
+        \\{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"Message too long"}}
+        \\{"jsonrpc":"2.0","id":2,"result":{}}
+        \\
+    , aw.written());
 }

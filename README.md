@@ -106,5 +106,5 @@ zig build ci -Doptimize=ReleaseSafe  # CI also runs everything in ReleaseSafe
 zig build test --fuzz=30K           # fuzz the message handler, the NDJSON reader and the result checks
 ```
 
-`zig build test --fuzz` exits with code 0 even when it finds a failing input. Check for `.zig-cache/f/crash`, which contains the input. To keep it as a regression test, add the file (via `@embedFile`) to the `corpus` of the failing `std.testing.fuzz` call; `zig build test` always runs the corpus.
+The fuzz targets are the tests named `fuzz …` (`fuzz handleMessage`, `fuzz readNdjsonMessage`, `fuzz checkJson`); `--fuzz` is not supported on Windows. CI fuzzes them with a new `--seed` for every run. `zig build test --fuzz` exits with code 0 even when it finds a failing input, so check for `.zig-cache/f/crash`, which contains the input (CI uploads it as the `fuzz-crash` artifact). To reproduce a failure and keep it as a regression test, add the file (via `@embedFile`) to the `corpus` of the failing `std.testing.fuzz` call; `zig build test` always runs the corpus.
 

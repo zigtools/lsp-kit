@@ -47,15 +47,22 @@ jobs:
         with:
           version: 0.17.0
 
-      # `zig build test --fuzz` exits with code 0 even when it finds a failing
-      # input, so check for the saved input explicitly.
+      # A new seed for every run explores new inputs. The run is not exactly
+      # reproducible from the seed (the fuzzer schedules the fuzz tests by
+      # CPU time), so the failing input is uploaded instead; adding it to the
+      # test's corpus replays it on every `zig build test`. `zig build test
+      # --fuzz` exits with code 0 even when it finds a failing input, so
+      # check for the saved input explicitly. --fuzz is not supported on
+      # Windows.
       - name: Fuzz
         shell: bash
         run: |
-          rm -f .zig-cache/f/crash
-          zig build test --fuzz=30K --summary all
+          seed=$(( ${{ github.run_id }} % 4294967296 ))
+          echo "Fuzzing with --seed=$seed"
+          rm -rf .zig-cache/f
+          zig build test --fuzz=30K --seed=$seed --summary all
           if [ -e .zig-cache/f/crash ]; then
-            echo "::error::Fuzzing found a failing input (uploaded as the fuzz-crash artifact)"
+            echo "::error::Fuzzing found a failing input (see the output above for the test). Download the fuzz-crash artifact and add it to that test's corpus to reproduce it."
             exit 1
           fi
 

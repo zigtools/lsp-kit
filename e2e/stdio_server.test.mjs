@@ -115,6 +115,11 @@ test("ping", async () => {
   assert.deepEqual(await client.ping(), {});
 });
 
+// The bounds of a Zig `i64` (not exactly representable as JS numbers, but
+// parsed from the schema the same way).
+const I64_MIN = -9223372036854775808;
+const I64_MAX = 9223372036854775807;
+
 test("tools/list", async () => {
   const { tools } = await client.listTools();
   assert.deepEqual(
@@ -126,12 +131,17 @@ test("tools/list", async () => {
   assert.deepEqual(increment.inputSchema, {
     type: "object",
     properties: {
-      by: { type: "integer", description: "The amount to add to the counter." },
+      by: {
+        type: "integer",
+        minimum: I64_MIN,
+        maximum: I64_MAX,
+        description: "The amount to add to the counter.",
+      },
     },
   });
   assert.deepEqual(increment.outputSchema, {
     type: "object",
-    properties: { value: { type: "integer" } },
+    properties: { value: { type: "integer", minimum: I64_MIN, maximum: I64_MAX } },
     required: ["value"],
   });
 

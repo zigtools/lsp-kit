@@ -61,6 +61,8 @@ pub const ID = union(enum) {
         }
     }
 
+    pub const json_schema = "{\"type\":[\"string\",\"integer\"]}";
+
     pub fn jsonStringify(self: ID, stream: anytype) @TypeOf(stream.*).Error!void {
         switch (self) {
             inline else => |value| try stream.write(value),
@@ -140,6 +142,8 @@ pub const JsonRPCMessage = union(enum) {
 
                 /// -32000 to -32099 are reserved for implementation-defined server-errors.
                 _,
+
+                pub const json_schema = "{\"type\":\"integer\"}";
 
                 pub fn jsonStringify(code: Code, stream: anytype) @TypeOf(stream.*).Error!void {
                     try stream.write(@backingInt(code));
@@ -982,7 +986,11 @@ pub fn TypedJsonRPCResponse(
                 inline else => |value, tag| {
                     try stream.objectField(@tagName(tag));
                     switch (@TypeOf(value)) {
-                        void, ?void => try stream.write(null),
+                        // MCP requires results to be objects.
+                        void, ?void => {
+                            try stream.beginObject();
+                            try stream.endObject();
+                        },
                         else => try stream.write(value),
                     }
                 },
@@ -1007,5 +1015,12 @@ test TypedJsonRPCResponse {
     , "{f}", .{std.json.fmt(Response{
         .id = .{ .number = 5 },
         .result_or_error = .{ .result = true },
+    }, .{})});
+
+    try std.testing.expectFmt(
+        \\{"jsonrpc":"2.0","id":5,"result":{}}
+    , "{f}", .{std.json.fmt(TypedJsonRPCResponse(void){
+        .id = .{ .number = 5 },
+        .result_or_error = .{ .result = {} },
     }, .{})});
 }

@@ -5,7 +5,7 @@
 //! | Zig type                          | JSON Schema                                     |
 //! |-----------------------------------|-------------------------------------------------|
 //! | `bool`                            | `{"type":"boolean"}`                            |
-//! | integers                          | `{"type":"integer"}` (`"minimum":0` if unsigned) |
+//! | integers                          | `{"type":"integer"}` with the type's `minimum`/`maximum` |
 //! | floats                            | `{"type":"number"}`                             |
 //! | `[]const u8`, `[N]u8`             | `{"type":"string"}`                             |
 //! | slices and arrays                 | `{"type":"array","items":...}`                  |
@@ -20,7 +20,9 @@
 //! Types can customize their schema by declaring:
 //!
 //! - `pub const json_schema: []const u8` to replace the generated schema
-//!   entirely. Must be valid minified JSON.
+//!   entirely. Must be valid minified JSON. Required for types with a custom
+//!   `jsonStringify`, `jsonParse` or `jsonParseFromValue`, whose JSON does not
+//!   follow their fields.
 //! - `pub const descriptions` as a struct literal that maps field names to
 //!   human readable descriptions, e.g. `.{ .query = "The text to search for" }`.
 
@@ -50,8 +52,12 @@ fn schemaOf(comptime T: type, comptime description: ?[]const u8) []const u8 {
         else => false,
     };
     if (is_container and @hasDecl(T, "json_schema")) {
-        if (description != null) return withDescription(T.json_schema, description.?);
-        return T.json_schema;
+        const custom: []const u8 = T.json_schema;
+        if (std.mem.findScalar(u8, custom, '\n') != null) {
+            @compileError(@typeName(T) ++ ".json_schema must be minified JSON without newlines");
+        }
+        if (description != null) return withDescription(custom, description.?);
+        return custom;
     }
 
     const desc = if (description) |d| ",\"description\":" ++ jsonString(d) else "";
@@ -61,12 +67,17 @@ fn schemaOf(comptime T: type, comptime description: ?[]const u8) []const u8 {
         return "{}";
     }
 
+    if (is_container and (std.meta.hasFn(T, "jsonStringify") or
+        std.meta.hasFn(T, "jsonParse") or
+        std.meta.hasFn(T, "jsonParseFromValue")))
+    {
+        @compileError(@typeName(T) ++ " has custom JSON (de)serialization, so its schema cannot be derived from its fields; declare `pub const json_schema`");
+    }
+
     return switch (@typeInfo(T)) {
         .bool => "{\"type\":\"boolean\"" ++ desc ++ "}",
-        .int => |info| switch (info.signedness) {
-            .signed => "{\"type\":\"integer\"" ++ desc ++ "}",
-            .unsigned => "{\"type\":\"integer\",\"minimum\":0" ++ desc ++ "}",
-        },
+        .int => "{\"type\":\"integer\",\"minimum\":" ++ intString(std.math.minInt(T)) ++
+            ",\"maximum\":" ++ intString(std.math.maxInt(T)) ++ desc ++ "}",
         .comptime_int => "{\"type\":\"integer\"" ++ desc ++ "}",
         .float, .comptime_float => "{\"type\":\"number\"" ++ desc ++ "}",
         // Struct fields unwrap the optional themselves because `null` fields are omitted when serializing.
@@ -89,30 +100,68 @@ fn schemaOf(comptime T: type, comptime description: ?[]const u8) []const u8 {
             },
             .many, .c => @compileError("unable to generate a JSON schema for " ++ @typeName(T)),
         },
+        // `std.json` requires exactly `len` bytes, which JSON Schema cannot express
+        // (`minLength`/`maxLength` count characters).
         .array => |info| if (info.child == u8)
-            "{\"type\":\"string\",\"minLength\":" ++ intString(info.len) ++ ",\"maxLength\":" ++ intString(info.len) ++ desc ++ "}"
+            "{\"type\":\"string\"" ++ desc ++ "}"
         else
             "{\"type\":\"array\",\"items\":" ++ schemaOf(info.child, null) ++
                 ",\"minItems\":" ++ intString(info.len) ++ ",\"maxItems\":" ++ intString(info.len) ++ desc ++ "}",
-        .@"struct" => |info| blk: {
-            if (info.is_tuple) @compileError("unable to generate a JSON schema for the tuple " ++ @typeName(T));
-            var properties: []const u8 = "";
-            var required: []const u8 = "";
-            for (info.field_names, info.field_types, info.field_attrs) |name, FieldType, attrs| {
-                if (attrs.@"comptime") continue;
-                const field_description = fieldDescription(T, name);
-                const is_optional = @typeInfo(FieldType) == .optional;
-                const PropertyType = if (is_optional) @typeInfo(FieldType).optional.child else FieldType;
-                properties = properties ++ (if (properties.len == 0) "" else ",") ++ jsonString(name) ++ ":" ++ schemaOf(PropertyType, field_description);
-                if (!is_optional and attrs.default_value_ptr == null) {
-                    required = required ++ (if (required.len == 0) "" else ",") ++ jsonString(name);
-                }
-            }
-            const required_part = if (required.len == 0) "" else ",\"required\":[" ++ required ++ "]";
-            break :blk "{\"type\":\"object\",\"properties\":{" ++ properties ++ "}" ++ required_part ++ desc ++ "}";
-        },
+        .@"struct" => structSchema(T, "", "", desc),
         .@"union" => @compileError("unable to generate a JSON schema for the union " ++ @typeName(T) ++ "; declare `pub const json_schema` on it"),
         else => @compileError("unable to generate a JSON schema for " ++ @typeName(T)),
+    };
+}
+
+/// Generates an object schema for the struct `T` with additional leading
+/// `properties` and `required` entries (comma separated, may be empty).
+fn structSchema(
+    comptime T: type,
+    comptime extra_properties: []const u8,
+    comptime extra_required: []const u8,
+    comptime desc: []const u8,
+) []const u8 {
+    const info = @typeInfo(T).@"struct";
+    if (info.is_tuple) @compileError("unable to generate a JSON schema for the tuple " ++ @typeName(T));
+    var properties: []const u8 = extra_properties;
+    var required: []const u8 = extra_required;
+    for (info.field_names, info.field_types, info.field_attrs) |name, FieldType, attrs| {
+        if (attrs.@"comptime") continue;
+        const field_description = fieldDescription(T, name);
+        const is_optional = @typeInfo(FieldType) == .optional;
+        const PropertyType = if (is_optional) @typeInfo(FieldType).optional.child else FieldType;
+        properties = properties ++ (if (properties.len == 0) "" else ",") ++ jsonString(name) ++ ":" ++ schemaOf(PropertyType, field_description);
+        if (!is_optional and attrs.default_value_ptr == null) {
+            required = required ++ (if (required.len == 0) "" else ",") ++ jsonString(name);
+        }
+    }
+    const required_part = if (required.len == 0) "" else ",\"required\":[" ++ required ++ "]";
+    return "{\"type\":\"object\",\"properties\":{" ++ properties ++ "}" ++ required_part ++ desc ++ "}";
+}
+
+/// Returns the schema of a tagged union whose payloads are structs and whose
+/// active field is stored in the `tag_field` property, like
+/// `types.TypeDiscriminated` serializes it.
+pub fn generateDiscriminated(comptime T: type, comptime tag_field: []const u8) []const u8 {
+    @setEvalBranchQuota(100_000);
+    return comptime blk: {
+        const info = @typeInfo(T).@"union";
+        var variants: []const u8 = "";
+        for (info.field_names, info.field_types) |name, Payload| {
+            const tag_property = jsonString(tag_field) ++ ":{\"const\":" ++ jsonString(name) ++ "}";
+            variants = variants ++ (if (variants.len == 0) "" else ",") ++ structSchema(Payload, tag_property, jsonString(tag_field), "");
+        }
+        break :blk "{\"anyOf\":[" ++ variants ++ "]}";
+    };
+}
+
+/// Returns `{"anyOf":[...]}` with the schema of each type.
+pub fn generateAnyOf(comptime Ts: []const type) []const u8 {
+    @setEvalBranchQuota(100_000);
+    return comptime blk: {
+        var variants: []const u8 = "";
+        for (Ts) |T| variants = variants ++ (if (variants.len == 0) "" else ",") ++ schemaOf(T, null);
+        break :blk "{\"anyOf\":[" ++ variants ++ "]}";
     };
 }
 
@@ -211,13 +260,15 @@ test jsonString {
 
 test generate {
     try std.testing.expectEqualStrings("{\"type\":\"boolean\"}", generate(bool));
-    try std.testing.expectEqualStrings("{\"type\":\"integer\"}", generate(i32));
-    try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":0}", generate(u8));
+    try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":-2147483648,\"maximum\":2147483647}", generate(i32));
+    try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":0,\"maximum\":255}", generate(u8));
+    try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":0,\"maximum\":18446744073709551615}", generate(u64));
+    try std.testing.expectEqualStrings("{\"type\":\"string\"}", generate([4]u8));
     try std.testing.expectEqualStrings("{\"type\":\"number\"}", generate(f64));
     try std.testing.expectEqualStrings("{\"type\":\"string\"}", generate([]const u8));
     try std.testing.expectEqualStrings("{\"anyOf\":[{\"type\":\"string\"},{\"type\":\"null\"}]}", generate(?[]const u8));
     try std.testing.expectEqualStrings(
-        "{\"type\":\"array\",\"items\":{\"anyOf\":[{\"type\":\"integer\",\"minimum\":0},{\"type\":\"null\"}]}}",
+        "{\"type\":\"array\",\"items\":{\"anyOf\":[{\"type\":\"integer\",\"minimum\":0,\"maximum\":4294967295},{\"type\":\"null\"}]}}",
         generate([]const ?u32),
     );
     try std.testing.expectEqualStrings("{\"type\":\"array\",\"items\":{\"type\":\"string\"}}", generate([]const []const u8));
@@ -239,7 +290,7 @@ test "generate - struct" {
     };
 
     try std.testing.expectEqualStrings(
-        \\{"type":"object","properties":{"query":{"type":"string","description":"The \"text\" to search for"},"limit":{"type":"integer","minimum":0,"description":"Maximum number of results"},"case_sensitive":{"type":"boolean"},"mode":{"type":"string","enum":["fast","exact"]}},"required":["query","mode"]}
+        \\{"type":"object","properties":{"query":{"type":"string","description":"The \"text\" to search for"},"limit":{"type":"integer","minimum":0,"maximum":4294967295,"description":"Maximum number of results"},"case_sensitive":{"type":"boolean"},"mode":{"type":"string","enum":["fast","exact"]}},"required":["query","mode"]}
     , generateObject(Args));
 
     // the generated schema must be valid JSON

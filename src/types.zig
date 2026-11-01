@@ -8,6 +8,7 @@
 
 const std = @import("std");
 const json_rpc = @import("json_rpc.zig");
+const schema = @import("schema.zig");
 
 /// The protocol version a server built with this library prefers.
 pub const latest_protocol_version = "2025-11-25";
@@ -226,6 +227,7 @@ pub const ContentBlock = union(enum) {
     resource_link: ResourceLink,
     resource: EmbeddedResource,
 
+    pub const json_schema = schema.generateDiscriminated(@This(), "type");
     pub const jsonParse = TypeDiscriminated(@This()).jsonParse;
     pub const jsonParseFromValue = TypeDiscriminated(@This()).jsonParseFromValue;
     pub const jsonStringify = TypeDiscriminated(@This()).jsonStringify;
@@ -240,6 +242,8 @@ pub const ContentBlock = union(enum) {
 pub const ResourceContents = union(enum) {
     text: TextResourceContents,
     blob: BlobResourceContents,
+
+    pub const json_schema = schema.generateAnyOf(&.{ TextResourceContents, BlobResourceContents });
 
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!ResourceContents {
         const value = try std.json.Value.jsonParse(allocator, source, options);
@@ -289,6 +293,9 @@ pub const Json = union(enum) {
     /// Must be valid, minified JSON (no newline characters).
     raw: []const u8,
     value: std.json.Value,
+
+    /// Any JSON value.
+    pub const json_schema = "{}";
 
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!Json {
         return .{ .value = try std.json.Value.jsonParse(allocator, source, options) };
@@ -555,6 +562,7 @@ pub const CompletionReference = union(enum) {
     @"ref/prompt": PromptReference,
     @"ref/resource": ResourceTemplateReference,
 
+    pub const json_schema = schema.generateDiscriminated(@This(), "type");
     pub const jsonParse = TypeDiscriminated(@This()).jsonParse;
     pub const jsonParseFromValue = TypeDiscriminated(@This()).jsonParseFromValue;
     pub const jsonStringify = TypeDiscriminated(@This()).jsonStringify;
@@ -865,4 +873,36 @@ test InitializeRequestParams {
     try std.testing.expect(parsed.value.capabilities.roots.?.listChanged.?);
     try std.testing.expect(parsed.value.capabilities.sampling != null);
     try std.testing.expect(parsed.value.capabilities.elicitation == null);
+}
+
+test "json_schema of custom-serialized types" {
+    const allocator = std.testing.allocator;
+
+    const parsed = try std.json.parseFromSlice(std.json.Value, allocator, ContentBlock.json_schema, .{});
+    defer parsed.deinit();
+    const variants = parsed.value.object.get("anyOf").?.array.items;
+    try std.testing.expectEqual(5, variants.len);
+    for (variants, std.meta.fieldNames(ContentBlock)) |variant, tag| {
+        const properties = variant.object.get("properties").?.object;
+        try std.testing.expectEqualStrings(tag, properties.get("type").?.object.get("const").?.string);
+        try std.testing.expectEqualStrings("type", variant.object.get("required").?.array.items[0].string);
+    }
+
+    try std.testing.expectEqualStrings(
+        \\{"anyOf":[{"type":"object","properties":{"type":{"const":"ref/prompt"},"name":{"type":"string"},"title":{"type":"string"}},"required":["type","name"]},{"type":"object","properties":{"type":{"const":"ref/resource"},"uri":{"type":"string"}},"required":["type","uri"]}]}
+    , CompletionReference.json_schema);
+
+    // Structs that contain custom-serialized types get a schema.
+    const Result = struct {
+        id: RequestId,
+        content: []const ContentBlock,
+        contents: ResourceContents,
+        extra: Json,
+    };
+    const result_schema = schema.generateObject(Result);
+    const parsed_result = try std.json.parseFromSlice(std.json.Value, allocator, result_schema, .{});
+    defer parsed_result.deinit();
+    const properties = parsed_result.value.object.get("properties").?.object;
+    try std.testing.expectEqualStrings("integer", properties.get("id").?.object.get("type").?.array.items[1].string);
+    try std.testing.expectEqual(0, properties.get("extra").?.object.count());
 }

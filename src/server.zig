@@ -979,7 +979,7 @@ test "tools/list" {
     try expectExchange(&handler,
         \\{"jsonrpc":"2.0","id":"a","method":"tools/list"}
     ,
-        \\{"jsonrpc":"2.0","id":"a","result":{"tools":[{"name":"search","description":"Search for things","inputSchema":{"type":"object","properties":{"query":{"type":"string","description":"What to search for"},"limit":{"type":"integer","minimum":0}},"required":["query"]},"outputSchema":{"type":"object","properties":{"matches":{"type":"array","items":{"type":"string"}}},"required":["matches"]},"annotations":{"readOnlyHint":true}},{"name":"echo","inputSchema":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}},{"name":"fail","inputSchema":{"type":"object"}}]}}
+        \\{"jsonrpc":"2.0","id":"a","result":{"tools":[{"name":"search","description":"Search for things","inputSchema":{"type":"object","properties":{"query":{"type":"string","description":"What to search for"},"limit":{"type":"integer","minimum":0,"maximum":4294967295}},"required":["query"]},"outputSchema":{"type":"object","properties":{"matches":{"type":"array","items":{"type":"string"}}},"required":["matches"]},"annotations":{"readOnlyHint":true}},{"name":"echo","inputSchema":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}},{"name":"fail","inputSchema":{"type":"object"}}]}}
         \\
     );
 }

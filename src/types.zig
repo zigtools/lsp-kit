@@ -227,7 +227,8 @@ pub const ContentBlock = union(enum) {
     resource_link: ResourceLink,
     resource: EmbeddedResource,
 
-    pub const json_schema = schema.generateDiscriminated(@This(), "type");
+    pub const json_schema = TypeDiscriminated(@This()).json_schema;
+    pub const json_check_payload = {};
     pub const jsonParse = TypeDiscriminated(@This()).jsonParse;
     pub const jsonParseFromValue = TypeDiscriminated(@This()).jsonParseFromValue;
     pub const jsonStringify = TypeDiscriminated(@This()).jsonStringify;
@@ -243,7 +244,8 @@ pub const ResourceContents = union(enum) {
     text: TextResourceContents,
     blob: BlobResourceContents,
 
-    pub const json_schema = schema.generateAnyOf(&.{ TextResourceContents, BlobResourceContents });
+    pub const json_schema = schema.generateAnyOfPayloads(@This());
+    pub const json_check_payload = {};
 
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!ResourceContents {
         const value = try std.json.Value.jsonParse(allocator, source, options);
@@ -296,6 +298,7 @@ pub const Json = union(enum) {
 
     /// Any JSON value.
     pub const json_schema = "{}";
+    pub const json_check_payload = {};
 
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!Json {
         return .{ .value = try std.json.Value.jsonParse(allocator, source, options) };
@@ -562,7 +565,8 @@ pub const CompletionReference = union(enum) {
     @"ref/prompt": PromptReference,
     @"ref/resource": ResourceTemplateReference,
 
-    pub const json_schema = schema.generateDiscriminated(@This(), "type");
+    pub const json_schema = TypeDiscriminated(@This()).json_schema;
+    pub const json_check_payload = {};
     pub const jsonParse = TypeDiscriminated(@This()).jsonParse;
     pub const jsonParseFromValue = TypeDiscriminated(@This()).jsonParseFromValue;
     pub const jsonStringify = TypeDiscriminated(@This()).jsonStringify;
@@ -770,6 +774,8 @@ pub const server_notifications = struct {
 pub fn TypeDiscriminated(comptime T: type) type {
     const discriminator = "type";
     return struct {
+        pub const json_schema = schema.generateDiscriminated(T, discriminator);
+
         pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!T {
             const value = try std.json.Value.jsonParse(allocator, source, options);
             return try jsonParseFromValue(allocator, value, options);

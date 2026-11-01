@@ -62,6 +62,7 @@ pub const ID = union(enum) {
     }
 
     pub const json_schema = "{\"type\":[\"string\",\"integer\"]}";
+    pub const json_check_payload = {};
 
     pub fn jsonStringify(self: ID, stream: anytype) @TypeOf(stream.*).Error!void {
         switch (self) {

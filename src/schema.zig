@@ -43,7 +43,11 @@ pub fn generateObject(comptime T: type) []const u8 {
         .@"struct" => |info| if (info.is_tuple) @compileError("expected a struct type but got the tuple " ++ @typeName(T)),
         else => @compileError("expected a struct type but got " ++ @typeName(T)),
     }
-    return generate(T);
+    const result = comptime generate(T);
+    if (comptime !std.mem.startsWith(u8, result, "{\"type\":\"object\"")) {
+        @compileError(@typeName(T) ++ ".json_schema must describe an object and start with `{\"type\":\"object\"`");
+    }
+    return result;
 }
 
 fn schemaOf(comptime T: type, comptime description: ?[]const u8) []const u8 {
@@ -67,27 +71,32 @@ fn schemaOf(comptime T: type, comptime description: ?[]const u8) []const u8 {
         return "{}";
     }
 
-    if (is_container and (std.meta.hasFn(T, "jsonStringify") or
-        std.meta.hasFn(T, "jsonParse") or
-        std.meta.hasFn(T, "jsonParseFromValue")))
-    {
-        @compileError(@typeName(T) ++ " has custom JSON (de)serialization, so its schema cannot be derived from its fields; declare `pub const json_schema`");
-    }
+    if (is_container) assertDefaultSerialization(T);
 
     return switch (@typeInfo(T)) {
         .bool => "{\"type\":\"boolean\"" ++ desc ++ "}",
-        .int => "{\"type\":\"integer\",\"minimum\":" ++ intString(std.math.minInt(T)) ++
-            ",\"maximum\":" ++ intString(std.math.maxInt(T)) ++ desc ++ "}",
+        .int => |info| if (info.bits <= max_bounded_int_bits)
+            "{\"type\":\"integer\",\"minimum\":" ++ intString(std.math.minInt(T)) ++
+                ",\"maximum\":" ++ intString(std.math.maxInt(T)) ++ desc ++ "}"
+        else switch (info.signedness) {
+            // Wider bounds are not exactly representable as doubles, which most
+            // JSON Schema validators use, and would mostly add noise.
+            .signed => "{\"type\":\"integer\"" ++ desc ++ "}",
+            .unsigned => "{\"type\":\"integer\",\"minimum\":0" ++ desc ++ "}",
+        },
         .comptime_int => "{\"type\":\"integer\"" ++ desc ++ "}",
         .float, .comptime_float => "{\"type\":\"number\"" ++ desc ++ "}",
         // Struct fields unwrap the optional themselves because `null` fields are omitted when serializing.
         .optional => |info| "{\"anyOf\":[" ++ schemaOf(info.child, null) ++ ",{\"type\":\"null\"}]" ++ desc ++ "}",
         .@"enum" => |info| blk: {
             var values: []const u8 = "";
-            for (info.field_names, 0..) |name, i| {
-                values = values ++ (if (i == 0) "" else ",") ++ jsonString(name);
-            }
-            break :blk "{\"type\":\"string\",\"enum\":[" ++ values ++ "]" ++ desc ++ "}";
+            for (info.field_names) |name| values = listAppend(values, jsonString(name));
+            const named = "{\"type\":\"string\",\"enum\":[" ++ values ++ "]";
+            break :blk switch (info.mode) {
+                .exhaustive => named ++ desc ++ "}",
+                // `std.json` serializes unnamed values as integers.
+                .nonexhaustive => "{\"anyOf\":[" ++ named ++ "}," ++ schemaOf(info.tag_type, null) ++ "]" ++ desc ++ "}",
+            };
         },
         .pointer => |info| switch (info.size) {
             .slice => if (info.child == u8)
@@ -130,9 +139,9 @@ fn structSchema(
         const field_description = fieldDescription(T, name);
         const is_optional = @typeInfo(FieldType) == .optional;
         const PropertyType = if (is_optional) @typeInfo(FieldType).optional.child else FieldType;
-        properties = properties ++ (if (properties.len == 0) "" else ",") ++ jsonString(name) ++ ":" ++ schemaOf(PropertyType, field_description);
+        properties = listAppend(properties, jsonString(name) ++ ":" ++ schemaOf(PropertyType, field_description));
         if (!is_optional and attrs.default_value_ptr == null) {
-            required = required ++ (if (required.len == 0) "" else ",") ++ jsonString(name);
+            required = listAppend(required, jsonString(name));
         }
     }
     const required_part = if (required.len == 0) "" else ",\"required\":[" ++ required ++ "]";
@@ -148,21 +157,46 @@ pub fn generateDiscriminated(comptime T: type, comptime tag_field: []const u8) [
         const info = @typeInfo(T).@"union";
         var variants: []const u8 = "";
         for (info.field_names, info.field_types) |name, Payload| {
+            if (@typeInfo(Payload) != .@"struct") @compileError(@typeName(T) ++ "." ++ name ++ " must be a struct");
+            if (@hasField(Payload, tag_field)) {
+                @compileError(@typeName(Payload) ++ " has a field named '" ++ tag_field ++ "', which clashes with the discriminator of " ++ @typeName(T));
+            }
             const tag_property = jsonString(tag_field) ++ ":{\"const\":" ++ jsonString(name) ++ "}";
-            variants = variants ++ (if (variants.len == 0) "" else ",") ++ structSchema(Payload, tag_property, jsonString(tag_field), "");
+            const variant = if (@hasDecl(Payload, "json_schema"))
+                "{\"allOf\":[{\"type\":\"object\",\"properties\":{" ++ tag_property ++ "},\"required\":[" ++ jsonString(tag_field) ++ "]}," ++ schemaOf(Payload, null) ++ "]}"
+            else variant: {
+                assertDefaultSerialization(Payload);
+                break :variant structSchema(Payload, tag_property, jsonString(tag_field), "");
+            };
+            variants = listAppend(variants, variant);
         }
         break :blk "{\"anyOf\":[" ++ variants ++ "]}";
     };
 }
 
-/// Returns `{"anyOf":[...]}` with the schema of each type.
-pub fn generateAnyOf(comptime Ts: []const type) []const u8 {
+/// Returns `{"anyOf":[...]}` with the schema of each payload of the union `T`.
+/// For unions that serialize their active payload directly.
+pub fn generateAnyOfPayloads(comptime T: type) []const u8 {
     @setEvalBranchQuota(100_000);
     return comptime blk: {
         var variants: []const u8 = "";
-        for (Ts) |T| variants = variants ++ (if (variants.len == 0) "" else ",") ++ schemaOf(T, null);
+        for (@typeInfo(T).@"union".field_types) |Payload| variants = listAppend(variants, schemaOf(Payload, null));
         break :blk "{\"anyOf\":[" ++ variants ++ "]}";
     };
+}
+
+fn assertDefaultSerialization(comptime T: type) void {
+    if (std.meta.hasFn(T, "jsonStringify") or std.meta.hasFn(T, "jsonParse") or std.meta.hasFn(T, "jsonParseFromValue")) {
+        @compileError(@typeName(T) ++ " has custom JSON (de)serialization, so its schema cannot be derived from its fields; declare `pub const json_schema`");
+    }
+}
+
+/// Integer types up to this size get `minimum`/`maximum` bounds.
+const max_bounded_int_bits = 32;
+
+/// Appends `item` to a comma separated list.
+fn listAppend(comptime list: []const u8, comptime item: []const u8) []const u8 {
+    return if (list.len == 0) item else list ++ "," ++ item;
 }
 
 /// Returns the path of the first optional struct field inside `T` that has no
@@ -228,7 +262,9 @@ fn fieldDescription(comptime T: type, comptime field_name: []const u8) ?[]const 
 
 /// Inserts a `"description"` into an existing object schema.
 fn withDescription(comptime schema: []const u8, comptime description: []const u8) []const u8 {
-    std.debug.assert(schema[0] == '{' and schema[schema.len - 1] == '}');
+    const is_object = schema.len >= 2 and schema[0] == '{' and schema[schema.len - 1] == '}';
+    // Boolean schemas (`true`/`false`) cannot have keywords.
+    if (!is_object) return "{\"allOf\":[" ++ schema ++ "],\"description\":" ++ jsonString(description) ++ "}";
     const separator = if (schema.len == 2) "" else ",";
     return schema[0 .. schema.len - 1] ++ separator ++ "\"description\":" ++ jsonString(description) ++ "}";
 }
@@ -262,7 +298,12 @@ test generate {
     try std.testing.expectEqualStrings("{\"type\":\"boolean\"}", generate(bool));
     try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":-2147483648,\"maximum\":2147483647}", generate(i32));
     try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":0,\"maximum\":255}", generate(u8));
-    try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":0,\"maximum\":18446744073709551615}", generate(u64));
+    try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":0}", generate(u64));
+    try std.testing.expectEqualStrings("{\"type\":\"integer\"}", generate(i64));
+    try std.testing.expectEqualStrings(
+        "{\"anyOf\":[{\"type\":\"string\",\"enum\":[\"a\"]},{\"type\":\"integer\",\"minimum\":0,\"maximum\":255}]}",
+        generate(enum(u8) { a, _ }),
+    );
     try std.testing.expectEqualStrings("{\"type\":\"string\"}", generate([4]u8));
     try std.testing.expectEqualStrings("{\"type\":\"number\"}", generate(f64));
     try std.testing.expectEqualStrings("{\"type\":\"string\"}", generate([]const u8));
@@ -316,6 +357,37 @@ test "generate - nested and custom" {
     try std.testing.expectEqualStrings(
         \\{"type":"object","properties":{"points":{"type":"array","items":{"type":"object","properties":{"x":{"type":"number"},"y":{"type":"number"}},"required":["x","y"]}},"link":{"type":"string","format":"uri","description":"A link"}},"required":["points","link"]}
     , generateObject(Args));
+}
+
+test "generate - descriptions on boolean schemas" {
+    const Anything = struct {
+        pub const json_schema = "true";
+    };
+    const Args = struct {
+        value: Anything,
+        pub const descriptions = .{ .value = "Any value" };
+    };
+    try std.testing.expectEqualStrings(
+        \\{"type":"object","properties":{"value":{"allOf":[true],"description":"Any value"}},"required":["value"]}
+    , generateObject(Args));
+}
+
+test generateDiscriminated {
+    const Custom = struct {
+        pub const json_schema = "{\"type\":\"object\",\"properties\":{\"n\":{\"type\":\"number\"}}}";
+    };
+    const U = union(enum) {
+        plain: struct { x: bool },
+        custom: Custom,
+    };
+    try std.testing.expectEqualStrings(
+        \\{"anyOf":[{"type":"object","properties":{"kind":{"const":"plain"},"x":{"type":"boolean"}},"required":["kind","x"]},{"allOf":[{"type":"object","properties":{"kind":{"const":"custom"}},"required":["kind"]},{"type":"object","properties":{"n":{"type":"number"}}}]}]}
+    , generateDiscriminated(U, "kind"));
+}
+
+test generateAnyOfPayloads {
+    const U = union(enum) { a: bool, b: []const u8 };
+    try std.testing.expectEqualStrings("{\"anyOf\":[{\"type\":\"boolean\"},{\"type\":\"string\"}]}", generateAnyOfPayloads(U));
 }
 
 test generateObject {

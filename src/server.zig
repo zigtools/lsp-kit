@@ -287,11 +287,17 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
             var arena_allocator: std.heap.ArenaAllocator = .init(gpa);
             defer arena_allocator.deinit();
 
-            var request_id: ?json_rpc.ID = null;
-            self.handleMessageInner(io, arena_allocator.allocator(), transport, json_message, &request_id) catch |err| switch (err) {
+            var kind: MessageKind = .unknown;
+            self.handleMessageInner(io, arena_allocator.allocator(), transport, json_message, &kind) catch |err| switch (err) {
                 error.OutOfMemory => {
                     log.warn("ran out of memory while handling a message", .{});
-                    try writeFallbackError(io, transport, request_id, .internal_error, "OutOfMemory");
+                    switch (kind) {
+                        // Like a parse error: the id cannot be determined.
+                        .unknown => try writeFallbackError(io, transport, null, .internal_error, "OutOfMemory"),
+                        .request => |id| try writeFallbackError(io, transport, id, .internal_error, "OutOfMemory"),
+                        // Notifications and responses must not be answered.
+                        .other => {},
+                    }
                 },
                 else => |e| return e,
             };
@@ -303,13 +309,14 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
             arena: std.mem.Allocator,
             transport: *Transport,
             json_message: []const u8,
-            request_id: *?json_rpc.ID,
+            kind: *MessageKind,
         ) (Transport.WriteError || std.mem.Allocator.Error)!void {
             const value = std.json.parseFromSliceLeaky(std.json.Value, arena, json_message, .{}) catch |err| {
                 if (err == error.OutOfMemory) return error.OutOfMemory;
                 log.debug("failed to parse message: {}", .{err});
                 return transport.writeErrorResponse(io, arena, null, .{ .code = .parse_error, .message = "Parse error" }, stringify_options);
             };
+            kind.* = if (recoverId(value)) |id| .{ .request = id } else .other;
 
             const message = std.json.parseFromValueLeaky(json_rpc.JsonRPCMessage, arena, value, .{ .ignore_unknown_fields = true }) catch |err| {
                 if (err == error.OutOfMemory) return error.OutOfMemory;
@@ -328,7 +335,6 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
 
             switch (message) {
                 .request => |request| {
-                    request_id.* = request.id;
                     ctx.request_id = request.id;
                     ctx.progress_token = extractProgressToken(request.params);
                     try self.handleRequest(&ctx, request);
@@ -360,7 +366,7 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
             const params: M.Params = if (M.Params == void) {} else std.json.parseFromValueLeaky(
                 M.Params,
                 ctx.arena,
-                request.params orelse .{ .object = .empty },
+                paramsOrEmpty(request.params),
                 .{ .ignore_unknown_fields = true },
             ) catch |err| {
                 const message = try std.fmt.allocPrint(ctx.arena, "Invalid params: {s}", .{@errorName(err)});
@@ -452,7 +458,7 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
             const args: Args = if (Args == void) {} else std.json.parseFromValueLeaky(
                 Args,
                 ctx.arena,
-                arguments orelse .{ .object = .empty },
+                paramsOrEmpty(arguments),
                 .{ .ignore_unknown_fields = true },
             ) catch |err| {
                 return toolError(ctx.arena, "Invalid arguments for tool '{s}': {s}", .{ def.name, @errorName(err) });
@@ -473,7 +479,7 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
                     const args: Args = if (Args == void) {} else std.json.parseFromValueLeaky(
                         Args,
                         ctx.arena,
-                        params.arguments orelse .{ .object = .empty },
+                        paramsOrEmpty(params.arguments),
                         .{ .ignore_unknown_fields = true },
                     ) catch |err| {
                         return ctx.fail(error.InvalidParams, "Invalid arguments for prompt '{s}': {s}", .{ def.name, @errorName(err) });
@@ -492,7 +498,7 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
                     const params: M.Params = if (M.Params == void) {} else std.json.parseFromValueLeaky(
                         M.Params,
                         ctx.arena,
-                        notification.params orelse .{ .object = .empty },
+                        paramsOrEmpty(notification.params),
                         .{ .ignore_unknown_fields = true },
                     ) catch |err| {
                         log.err("invalid params for '{s}' notification: {}", .{ method, err });
@@ -606,15 +612,21 @@ fn checkJson(value: anytype) JsonValueError!void {
             .many, .c => {},
         },
         .@"struct" => |info| {
-            // The serialization of types with a custom `jsonStringify` is unknown.
-            if (std.meta.hasFn(T, "jsonStringify")) return;
+            if (!checksContents(T)) return;
             inline for (info.field_names) |name| try checkJson(@field(value, name));
         },
-        .@"union" => |info| if (info.tag_type != null) switch (value) {
+        .@"union" => |info| if (info.tag_type != null and checksContents(T)) switch (value) {
             inline else => |payload| try checkJson(payload),
         },
         else => {},
     }
+}
+
+/// The serialization of a type with a custom `jsonStringify` is unknown, so its
+/// contents are only checked if it declares `json_check_payload`, i.e. that it
+/// serializes its fields (or active payload) unchanged.
+fn checksContents(comptime T: type) bool {
+    return !std.meta.hasFn(T, "jsonStringify") or @hasDecl(T, "json_check_payload");
 }
 
 fn checkString(string: []const u8) JsonValueError!void {
@@ -634,6 +646,15 @@ test checkJson {
     try object.put(std.testing.allocator, "k", .{ .float = std.math.inf(f64) });
     try std.testing.expectError(error.NonFiniteNumber, checkJson(std.json.Value{ .object = object }));
 }
+
+/// What is known about a message, used to decide whether it can be answered.
+const MessageKind = union(enum) {
+    /// The message could not be parsed yet.
+    unknown,
+    request: json_rpc.ID,
+    /// A notification or response.
+    other,
+};
 
 /// Writes an error response without using the (possibly exhausted) heap.
 fn writeFallbackError(
@@ -717,6 +738,12 @@ fn toGetPromptResult(arena: std.mem.Allocator, result: anytype) std.mem.Allocato
         return .{ .messages = messages };
     }
     @compileError("unsupported prompt result type " ++ @typeName(T));
+}
+
+/// Treats missing and `null` params (or arguments) as an empty object.
+fn paramsOrEmpty(params: ?std.json.Value) std.json.Value {
+    const value = params orelse return .{ .object = .empty };
+    return if (value == .null) .{ .object = .empty } else value;
 }
 
 /// Extracts `params._meta.progressToken`.
@@ -1177,4 +1204,74 @@ test "message too long" {
         \\{"jsonrpc":"2.0","id":2,"result":{}}
         \\
     , aw.written());
+}
+
+test "null params are treated as missing" {
+    var handler: TestHandler = .{};
+    try expectExchange(&handler,
+        \\{"jsonrpc":"2.0","id":1,"method":"ping","params":null}
+        \\{"jsonrpc":"2.0","id":2,"method":"prompts/list","params":null}
+        \\{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"fail","arguments":null}}
+        \\
+    ,
+        \\{"jsonrpc":"2.0","id":1,"result":{}}
+        \\{"jsonrpc":"2.0","id":2,"result":{"prompts":[{"name":"greet","description":"Greet someone","arguments":[{"name":"name","required":true},{"name":"greeting","required":false}]}]}}
+        \\{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"FileNotFound"}],"isError":true}}
+        \\
+    );
+}
+
+test "out of memory never answers notifications or responses" {
+    const messages = [_][]const u8{
+        \\{"jsonrpc":"2.0","method":"notifications/progress","params":{"progressToken":1,"progress":0.5}}
+        ,
+        \\{"jsonrpc":"2.0","id":7,"result":{"content":[]}}
+        ,
+    };
+    // The only reply allowed is the one for a message that could not be
+    // parsed at all, where the kind of message is unknown.
+    const unknown_reply =
+        \\{"jsonrpc":"2.0","id":null,"error":{"code":-32603,"message":"OutOfMemory"}}
+        \\
+    ;
+    for (messages) |message| {
+        var induced_failures: usize = 0;
+        var fail_index: usize = 0;
+        while (fail_index < 64) : (fail_index += 1) {
+            var failing: std.testing.FailingAllocator = .init(std.testing.allocator, .{ .fail_index = fail_index });
+            var reader: std.Io.Reader = .fixed("");
+            var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+            defer aw.deinit();
+            var stream: Transport.Stream = .init(&reader, &aw.writer);
+            var handler: TestHandler = .{};
+            var server: TestServer = .init(&handler);
+            try server.handleMessage(std.testing.io, failing.allocator(), &stream.transport, message);
+            if (aw.written().len != 0) try std.testing.expectEqualStrings(unknown_reply, aw.written());
+            if (!failing.has_induced_failure) {
+                // Without a failure, the message must not be answered at all.
+                try std.testing.expectEqualStrings("", aw.written());
+                break;
+            }
+            induced_failures += 1;
+        }
+        try std.testing.expect(induced_failures > 0);
+    }
+}
+
+test "checkJson skips custom serialization unless it serializes its payload" {
+    const Opaque = union(enum) {
+        bytes: []const u8,
+        pub fn jsonStringify(_: @This(), stream: anytype) !void {
+            try stream.write("base64...");
+        }
+    };
+    const Transparent = union(enum) {
+        bytes: []const u8,
+        pub const json_check_payload = {};
+        pub fn jsonStringify(self: @This(), stream: anytype) !void {
+            try stream.write(self.bytes);
+        }
+    };
+    try checkJson(Opaque{ .bytes = "\xff" });
+    try std.testing.expectError(error.InvalidUtf8, checkJson(Transparent{ .bytes = "\xff" }));
 }

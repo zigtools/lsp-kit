@@ -79,6 +79,40 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run all the tests");
     test_step.dependOn(&b.addRunArtifact(mcp_tests).step);
 
+    // ---------------------------- End-to-end Tests ---------------------------
+
+    // Drives the example server with the official MCP TypeScript SDK client.
+    // Requires Node.js and npm.
+    const npm_ci = std.Build.Step.Run.create(b, "npm ci");
+    npm_ci.addFileArg(b.findProgramLazy(.{ .names = &.{"npm"} }));
+    npm_ci.addArgs(&.{ "ci", "--no-audit", "--no-fund" });
+    npm_ci.setCwd(b.path("e2e"));
+    npm_ci.has_side_effects = true;
+
+    const run_e2e = std.Build.Step.Run.create(b, "e2e stdio-server");
+    run_e2e.addFileArg(b.findProgramLazy(.{ .names = &.{"node"} }));
+    run_e2e.addFileArg(b.path("e2e/stdio_server.test.mjs"));
+    run_e2e.addArtifactArg(stdio_server_exe);
+    run_e2e.has_side_effects = true;
+    run_e2e.step.dependOn(&npm_ci.step);
+
+    const e2e_step = b.step("e2e", "Run the end-to-end tests against the example server (requires Node.js)");
+    e2e_step.dependOn(&run_e2e.step);
+
+    // ----------------------------------- CI ----------------------------------
+
+    const fmt_check = b.addFmt(.{
+        .paths = &.{ b.path("src"), b.path("examples"), b.path("build.zig"), b.path("build.zig.zon") },
+        .check = true,
+    });
+
+    const ci_step = b.step("ci", "Run everything that CI runs");
+    ci_step.dependOn(&fmt_check.step);
+    ci_step.dependOn(test_step);
+    ci_step.dependOn(b.getInstallStep());
+    ci_step.dependOn(docs_step);
+    ci_step.dependOn(e2e_step);
+
     // ----------------------------- Code Coverage -----------------------------
 
     const kcov_bin = b.findProgramLazy(.{

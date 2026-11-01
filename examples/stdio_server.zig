@@ -77,6 +77,8 @@ const Handler = struct {
         var it = std.mem.tokenizeAny(u8, args.text, " \t\r\n");
         while (it.next()) |_| count += 1;
 
+        // Only sent if the client asked for progress via `_meta.progressToken`.
+        try ctx.sendProgress(1, 1, "done");
         try ctx.logf(.info, "counted {d} words", .{count});
         return std.fmt.allocPrint(ctx.arena, "{d}", .{count});
     }

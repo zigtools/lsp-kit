@@ -89,3 +89,11 @@ See [`examples/stdio_server.zig`](examples/stdio_server.zig) for a complete serv
 zig build
 npx @modelcontextprotocol/inspector zig-out/bin/stdio-server
 ```
+
+# Development
+
+```bash
+zig build test   # unit tests
+zig build e2e    # end-to-end tests: the official MCP TypeScript SDK client drives examples/stdio_server.zig (requires Node.js and npm)
+zig build ci     # everything CI runs: format check, unit tests, build, docs and e2e tests
+```

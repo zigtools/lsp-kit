@@ -25,11 +25,12 @@ jobs:
         with:
           version: 0.17.0
 
-      - name: Check Formatting
-        run: zig fmt --ast-check --check src examples build.zig build.zig.zon
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
 
-      - name: Run Tests
-        run: zig build test --summary all
-
-      - name: Build Examples
-        run: zig build --summary all
+      - name: Run CI
+        run: zig build ci --summary all

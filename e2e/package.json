@@ -1,0 +1,12 @@
+{
+  "name": "blitzmcp-e2e",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end tests that drive the example server with the official MCP TypeScript SDK client.",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  }
+}

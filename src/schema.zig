@@ -44,8 +44,9 @@ pub fn generateObject(comptime T: type) []const u8 {
         else => @compileError("expected a struct type but got " ++ @typeName(T)),
     }
     const result = comptime generate(T);
-    if (comptime !std.mem.startsWith(u8, result, "{\"type\":\"object\"")) {
-        @compileError(@typeName(T) ++ ".json_schema must describe an object and start with `{\"type\":\"object\"`");
+    const top_level_type = comptime topLevelType(result);
+    if (comptime top_level_type == null or !std.mem.eql(u8, top_level_type.?, "object")) {
+        @compileError(@typeName(T) ++ ".json_schema must be an object schema with `\"type\":\"object\"`");
     }
     return result;
 }
@@ -57,8 +58,8 @@ fn schemaOf(comptime T: type, comptime description: ?[]const u8) []const u8 {
     };
     if (is_container and @hasDecl(T, "json_schema")) {
         const custom: []const u8 = T.json_schema;
-        if (std.mem.findScalar(u8, custom, '\n') != null) {
-            @compileError(@typeName(T) ++ ".json_schema must be minified JSON without newlines");
+        if (std.mem.findAny(u8, custom, "\r\n") != null) {
+            @compileError(@typeName(T) ++ ".json_schema must not contain line breaks, which would break the message framing");
         }
         if (description != null) return withDescription(custom, description.?);
         return custom;
@@ -75,7 +76,8 @@ fn schemaOf(comptime T: type, comptime description: ?[]const u8) []const u8 {
 
     return switch (@typeInfo(T)) {
         .bool => "{\"type\":\"boolean\"" ++ desc ++ "}",
-        .int => |info| if (info.bits <= max_bounded_int_bits)
+        // `usize`/`isize` are unbounded so that the schema does not depend on the target.
+        .int => |info| if (info.bits <= max_bounded_int_bits and T != usize and T != isize)
             "{\"type\":\"integer\",\"minimum\":" ++ intString(std.math.minInt(T)) ++
                 ",\"maximum\":" ++ intString(std.math.maxInt(T)) ++ desc ++ "}"
         else switch (info.signedness) {
@@ -162,8 +164,13 @@ pub fn generateDiscriminated(comptime T: type, comptime tag_field: []const u8) [
                 @compileError(@typeName(Payload) ++ " has a field named '" ++ tag_field ++ "', which clashes with the discriminator of " ++ @typeName(T));
             }
             const tag_property = jsonString(tag_field) ++ ":{\"const\":" ++ jsonString(name) ++ "}";
+            // The union serializer writes the payload's fields itself, so a custom
+            // `jsonStringify` on the payload would not be used.
+            if (std.meta.hasFn(Payload, "jsonStringify")) {
+                @compileError(@typeName(Payload) ++ " has a custom jsonStringify, which " ++ @typeName(T) ++ " does not use for its payloads");
+            }
             const variant = if (@hasDecl(Payload, "json_schema"))
-                "{\"allOf\":[{\"type\":\"object\",\"properties\":{" ++ tag_property ++ "},\"required\":[" ++ jsonString(tag_field) ++ "]}," ++ schemaOf(Payload, null) ++ "]}"
+                "{\"allOf\":[" ++ structSchema(struct {}, tag_property, jsonString(tag_field), "") ++ "," ++ schemaOf(Payload, null) ++ "]}"
             else variant: {
                 assertDefaultSerialization(Payload);
                 break :variant structSchema(Payload, tag_property, jsonString(tag_field), "");
@@ -191,6 +198,48 @@ fn assertDefaultSerialization(comptime T: type) void {
     }
 }
 
+/// Returns the value of the top-level `"type"` keyword of a minified or
+/// pretty-printed JSON schema if it is a string, e.g. `"object"`.
+fn topLevelType(comptime json: []const u8) ?[]const u8 {
+    var depth: usize = 0;
+    var i: usize = 0;
+    while (i < json.len) : (i += 1) {
+        switch (json[i]) {
+            '{', '[' => depth += 1,
+            '}', ']' => depth -= 1,
+            '"' => {
+                const start = i + 1;
+                i = start;
+                while (json[i] != '"') : (i += 1) {
+                    if (json[i] == '\\') i += 1;
+                }
+                const string = json[start..i];
+                // Only keys of the top-level object are interesting.
+                if (depth != 1 or !std.mem.eql(u8, string, "type")) continue;
+                var j = i + 1;
+                while (j < json.len and std.ascii.isWhitespace(json[j])) j += 1;
+                if (j >= json.len or json[j] != ':') continue;
+                j += 1;
+                while (j < json.len and std.ascii.isWhitespace(json[j])) j += 1;
+                if (j >= json.len or json[j] != '"') return null;
+                const value_end = std.mem.findScalarPos(u8, json, j + 1, '"') orelse return null;
+                return json[j + 1 .. value_end];
+            },
+            else => {},
+        }
+    }
+    return null;
+}
+
+test topLevelType {
+    try std.testing.expectEqualStrings("object", comptime topLevelType("{\"type\":\"object\"}").?);
+    try std.testing.expectEqualStrings("object", comptime topLevelType("{\"$schema\":\"x\",\"properties\":{\"type\":{\"type\":\"string\"}},\"type\":\"object\"}").?);
+    try std.testing.expectEqualStrings("object", comptime topLevelType("{ \"title\": \"a \\\"type\\\"\", \"type\" : \"object\" }").?);
+    try std.testing.expectEqual(null, comptime topLevelType("{\"properties\":{\"type\":{\"const\":\"object\"}}}"));
+    try std.testing.expectEqual(null, comptime topLevelType("true"));
+    try std.testing.expectEqual(null, comptime topLevelType("{\"type\":[\"object\",\"null\"]}"));
+}
+
 /// Integer types up to this size get `minimum`/`maximum` bounds.
 const max_bounded_int_bits = 32;
 
@@ -211,6 +260,7 @@ pub fn findOptionalWithoutDefault(comptime T: type) ?[]const u8 {
 }
 
 fn findOptionalWithoutDefaultInner(comptime T: type, comptime path: []const u8, comptime visited: []const type) ?[]const u8 {
+    if (T == std.json.Value) return null;
     for (visited) |V| if (V == T) return null;
     const next_visited = visited ++ [1]type{T};
     switch (@typeInfo(T)) {
@@ -224,6 +274,16 @@ fn findOptionalWithoutDefaultInner(comptime T: type, comptime path: []const u8, 
                 const field_path = path ++ "." ++ name;
                 if (@typeInfo(FieldType) == .optional and attrs.default_value_ptr == null) return field_path;
                 if (findOptionalWithoutDefaultInner(FieldType, field_path, next_visited)) |found| return found;
+            }
+            return null;
+        },
+        // Payloads are parsed with `std.json` too, unless the union has its own
+        // parser that does not declare `json_check_payload`.
+        .@"union" => |info| {
+            const custom_parse = std.meta.hasFn(T, "jsonParse") or std.meta.hasFn(T, "jsonParseFromValue");
+            if (custom_parse and !@hasDecl(T, "json_check_payload")) return null;
+            for (info.field_names, info.field_types) |name, Payload| {
+                if (findOptionalWithoutDefaultInner(Payload, path ++ "." ++ name, next_visited)) |found| return found;
             }
             return null;
         },
@@ -245,6 +305,17 @@ test findOptionalWithoutDefault {
         nested: ?[]const Inner = null,
     };
     try std.testing.expectEqualStrings(@typeName(Bad) ++ ".nested.c", comptime findOptionalWithoutDefault(Bad).?);
+
+    const InUnion = struct {
+        choice: union(enum) { a: struct { x: ?u32 }, b: bool },
+    };
+    try std.testing.expectEqualStrings(@typeName(InUnion) ++ ".choice.a.x", comptime findOptionalWithoutDefault(InUnion).?);
+
+    const CustomParse = union(enum) {
+        a: struct { x: ?u32 },
+        pub fn jsonParse() void {}
+    };
+    try std.testing.expectEqual(null, comptime findOptionalWithoutDefault(struct { c: CustomParse }));
 
     const Recursive = struct {
         children: []const @This(),
@@ -300,6 +371,7 @@ test generate {
     try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":0,\"maximum\":255}", generate(u8));
     try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":0}", generate(u64));
     try std.testing.expectEqualStrings("{\"type\":\"integer\"}", generate(i64));
+    try std.testing.expectEqualStrings("{\"type\":\"integer\",\"minimum\":0}", generate(usize));
     try std.testing.expectEqualStrings(
         "{\"anyOf\":[{\"type\":\"string\",\"enum\":[\"a\"]},{\"type\":\"integer\",\"minimum\":0,\"maximum\":255}]}",
         generate(enum(u8) { a, _ }),

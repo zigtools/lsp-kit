@@ -15,6 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-22.04, macos-latest, windows-latest]
+        optimize: [Debug, ReleaseSafe]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -33,4 +34,4 @@ jobs:
           cache-dependency-path: e2e/package-lock.json
 
       - name: Run CI
-        run: zig build ci --summary all
+        run: zig build ci -Doptimize=${{ matrix.optimize }} --summary all

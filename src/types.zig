@@ -298,7 +298,6 @@ pub const Json = union(enum) {
 
     /// Any JSON value.
     pub const json_schema = "{}";
-    pub const json_check_payload = {};
 
     pub fn jsonParse(allocator: std.mem.Allocator, source: anytype, options: std.json.ParseOptions) std.json.ParseError(@TypeOf(source.*))!Json {
         return .{ .value = try std.json.Value.jsonParse(allocator, source, options) };

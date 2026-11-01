@@ -102,4 +102,5 @@ npx @modelcontextprotocol/inspector zig-out/bin/stdio-server
 zig build test   # unit tests
 zig build e2e    # end-to-end tests: the official MCP TypeScript SDK client drives examples/stdio_server.zig (requires Node.js and npm)
 zig build ci     # everything CI runs: format check, unit tests, build, docs and e2e tests
+zig build ci -Doptimize=ReleaseSafe  # CI also runs everything in ReleaseSafe
 ```

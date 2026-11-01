@@ -316,12 +316,16 @@ pub fn Server(comptime Handler: type, comptime config: anytype) type {
                 log.debug("failed to parse message: {}", .{err});
                 return transport.writeErrorResponse(io, arena, null, .{ .code = .parse_error, .message = "Parse error" }, stringify_options);
             };
-            kind.* = if (recoverId(value)) |id| .{ .request = id } else .other;
+            kind.* = classify(value);
 
             const message = std.json.parseFromValueLeaky(json_rpc.JsonRPCMessage, arena, value, .{ .ignore_unknown_fields = true }) catch |err| {
                 if (err == error.OutOfMemory) return error.OutOfMemory;
                 log.debug("received an invalid message: {}", .{err});
-                return transport.writeErrorResponse(io, arena, recoverId(value), .{ .code = .invalid_request, .message = "Invalid Request" }, stringify_options);
+                const id: ?json_rpc.ID = switch (kind.*) {
+                    .request => |id| id,
+                    .unknown, .other => null,
+                };
+                return transport.writeErrorResponse(io, arena, id, .{ .code = .invalid_request, .message = "Invalid Request" }, stringify_options);
             };
 
             var ctx: Context = .{
@@ -573,50 +577,94 @@ pub const JsonValueError = error{
     NonFiniteNumber,
     /// `std.json` serializes byte strings that are not valid UTF-8 as arrays of numbers.
     InvalidUtf8,
+    /// `std.json` cannot serialize documents nested deeper than 256 levels.
+    TooDeeplyNested,
+    /// `types.Json.raw` is written verbatim, a newline would break the message framing.
+    NewlineInRawJson,
 };
+
+/// The maximum nesting depth of a value inside a message. `std.json` supports
+/// 256 levels; the rest is left for the JSON-RPC envelope around the value.
+pub const max_value_depth = 200;
 
 fn jsonValueErrorMessage(err: JsonValueError) []const u8 {
     return switch (err) {
         error.NonFiniteNumber => "contains a non-finite number (inf or nan), which cannot be represented in JSON",
         error.InvalidUtf8 => "contains a string that is not valid UTF-8",
+        error.TooDeeplyNested => std.fmt.comptimePrint("is nested more than {d} levels deep", .{max_value_depth}),
+        error.NewlineInRawJson => "contains raw JSON with a newline character",
     };
 }
 
-/// Verifies that `value` serializes to the JSON its schema promises.
+/// Verifies that `value` serializes to the JSON its schema promises and that
+/// `std.json` can serialize it.
 fn checkJson(value: anytype) JsonValueError!void {
+    return checkJsonDepth(value, 0);
+}
+
+fn checkJsonDepth(value: anytype, depth: usize) JsonValueError!void {
     const T = @TypeOf(value);
     if (T == std.json.Value) {
         switch (value) {
             .float => |float| if (!std.math.isFinite(float)) return error.NonFiniteNumber,
             .string, .number_string => |string| try checkString(string),
-            .array => |array| for (array.items) |item| try checkJson(item),
-            .object => |object| for (object.keys(), object.values()) |key, item| {
-                try checkString(key);
-                try checkJson(item);
+            .array => |array| {
+                try checkDepth(depth + 1);
+                for (array.items) |item| try checkJsonDepth(item, depth + 1);
+            },
+            .object => |object| {
+                try checkDepth(depth + 1);
+                for (object.keys(), object.values()) |key, item| {
+                    try checkString(key);
+                    try checkJsonDepth(item, depth + 1);
+                }
             },
             .null, .bool, .integer => {},
+        }
+        return;
+    }
+    if (T == types.Json) {
+        switch (value) {
+            // Written verbatim, so its nesting does not count towards `std.json`'s limit.
+            .raw => |raw| {
+                if (std.mem.findAny(u8, raw, "\r\n") != null) return error.NewlineInRawJson;
+                try checkString(raw);
+            },
+            .value => |inner| try checkJsonDepth(inner, depth),
         }
         return;
     }
     switch (@typeInfo(T)) {
         .float => if (!std.math.isFinite(value)) return error.NonFiniteNumber,
         .comptime_float => if (!std.math.isFinite(@as(f64, value))) return error.NonFiniteNumber,
-        .optional => if (value) |payload| try checkJson(payload),
-        .array => |info| if (info.child == u8) try checkString(&value) else for (value) |item| try checkJson(item),
+        .optional => if (value) |payload| try checkJsonDepth(payload, depth),
+        .array => |info| if (info.child == u8) try checkString(&value) else {
+            try checkDepth(depth + 1);
+            for (value) |item| try checkJsonDepth(item, depth + 1);
+        },
         .pointer => |info| switch (info.size) {
-            .slice => if (info.child == u8) try checkString(value) else for (value) |item| try checkJson(item),
+            .slice => if (info.child == u8) try checkString(value) else {
+                try checkDepth(depth + 1);
+                for (value) |item| try checkJsonDepth(item, depth + 1);
+            },
             .one => switch (@typeInfo(info.child)) {
                 .@"opaque" => {},
-                else => try checkJson(value.*),
+                else => try checkJsonDepth(value.*, depth),
             },
             .many, .c => {},
         },
         .@"struct" => |info| {
             if (!checksContents(T)) return;
-            inline for (info.field_names) |name| try checkJson(@field(value, name));
+            try checkDepth(depth + 1);
+            inline for (info.field_names) |name| try checkJsonDepth(@field(value, name), depth + 1);
         },
-        .@"union" => |info| if (info.tag_type != null and checksContents(T)) switch (value) {
-            inline else => |payload| try checkJson(payload),
+        // Unions serialize as an object around their payload (or as the payload
+        // itself), so counting one level is an upper bound for both.
+        .@"union" => |info| if (info.tag_type != null and checksContents(T)) {
+            try checkDepth(depth + 1);
+            switch (value) {
+                inline else => |payload| try checkJsonDepth(payload, depth + 1),
+            }
         },
         else => {},
     }
@@ -627,6 +675,10 @@ fn checkJson(value: anytype) JsonValueError!void {
 /// serializes its fields (or active payload) unchanged.
 fn checksContents(comptime T: type) bool {
     return !std.meta.hasFn(T, "jsonStringify") or @hasDecl(T, "json_check_payload");
+}
+
+fn checkDepth(depth: usize) JsonValueError!void {
+    if (depth > max_value_depth) return error.TooDeeplyNested;
 }
 
 fn checkString(string: []const u8) JsonValueError!void {
@@ -649,12 +701,42 @@ test checkJson {
 
 /// What is known about a message, used to decide whether it can be answered.
 const MessageKind = union(enum) {
-    /// The message could not be parsed yet.
+    /// Not (yet) known to be a request, notification or response. Answered
+    /// like a parse error or invalid request: with a `null` id.
     unknown,
     request: json_rpc.ID,
-    /// A notification or response.
+    /// A notification or response, which must not be answered.
     other,
 };
+
+fn classify(value: std.json.Value) MessageKind {
+    if (recoverId(value)) |id| return .{ .request = id };
+    if (value != .object) return .unknown;
+    const has_method = value.object.get("method") != null;
+    const has_id = value.object.get("id") != null;
+    // A `method` with an unusable id (e.g. `null` or `1.5`) is an invalid request.
+    if (has_method and has_id) return .unknown;
+    return .other;
+}
+
+test classify {
+    var arena_allocator: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena_allocator.deinit();
+    const arena = arena_allocator.allocator();
+    const cases = [_]struct { []const u8, std.meta.Tag(MessageKind) }{
+        .{ "{\"id\":1,\"method\":\"ping\"}", .request },
+        .{ "{\"method\":\"notifications/initialized\"}", .other },
+        .{ "{\"id\":1,\"result\":{}}", .other },
+        .{ "{\"id\":1.5,\"method\":\"ping\"}", .unknown },
+        .{ "{\"id\":null,\"method\":\"ping\"}", .unknown },
+        .{ "[{\"id\":1,\"method\":\"ping\"}]", .unknown },
+        .{ "5", .unknown },
+    };
+    for (cases) |case| {
+        const value = try std.json.parseFromSliceLeaky(std.json.Value, arena, case[0], .{});
+        try std.testing.expectEqual(case[1], std.meta.activeTag(classify(value)));
+    }
+}
 
 /// Writes an error response without using the (possibly exhausted) heap.
 fn writeFallbackError(
@@ -1236,8 +1318,9 @@ test "out of memory never answers notifications or responses" {
     ;
     for (messages) |message| {
         var induced_failures: usize = 0;
+        var completed = false;
         var fail_index: usize = 0;
-        while (fail_index < 64) : (fail_index += 1) {
+        while (fail_index < 1024) : (fail_index += 1) {
             var failing: std.testing.FailingAllocator = .init(std.testing.allocator, .{ .fail_index = fail_index });
             var reader: std.Io.Reader = .fixed("");
             var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -1250,11 +1333,13 @@ test "out of memory never answers notifications or responses" {
             if (!failing.has_induced_failure) {
                 // Without a failure, the message must not be answered at all.
                 try std.testing.expectEqualStrings("", aw.written());
+                completed = true;
                 break;
             }
             induced_failures += 1;
         }
         try std.testing.expect(induced_failures > 0);
+        try std.testing.expect(completed);
     }
 }
 
@@ -1274,4 +1359,53 @@ test "checkJson skips custom serialization unless it serializes its payload" {
     };
     try checkJson(Opaque{ .bytes = "\xff" });
     try std.testing.expectError(error.InvalidUtf8, checkJson(Transparent{ .bytes = "\xff" }));
+}
+
+test "deeply nested and raw results are rejected instead of crashing" {
+    const Handler = struct {
+        fn deep(arena: std.mem.Allocator) !types.CallToolResult {
+            const text = @as([300]u8, @splat('[')) ++ @as([300]u8, @splat(']'));
+            const value = try std.json.parseFromSliceLeaky(std.json.Value, arena, &text, .{});
+            return .{ .content = &.{}, .structuredContent = .{ .value = value } };
+        }
+        fn shallow(arena: std.mem.Allocator) !types.CallToolResult {
+            const text = @as([150]u8, @splat('[')) ++ @as([150]u8, @splat(']'));
+            const value = try std.json.parseFromSliceLeaky(std.json.Value, arena, &text, .{});
+            return .{ .content = &.{}, .structuredContent = .{ .value = value } };
+        }
+        fn rawNewline() types.CallToolResult {
+            return .{ .content = &.{}, .structuredContent = .{ .raw = "{\n}" } };
+        }
+    };
+    const S = Server(Handler, .{
+        .name = "s",
+        .version = "0",
+        .tools = .{
+            .{ .name = "deep", .call = Handler.deep },
+            .{ .name = "shallow", .call = Handler.shallow },
+            .{ .name = "rawNewline", .call = Handler.rawNewline },
+        },
+    });
+    var handler: Handler = .{};
+    try expectServerExchange(S, &handler,
+        \\{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"deep"}}
+        \\{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"rawNewline"}}
+        \\
+    ,
+        \\{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"Invalid tool result: is nested more than 200 levels deep"}],"isError":true}}
+        \\{"jsonrpc":"2.0","id":2,"result":{"content":[{"type":"text","text":"Invalid tool result: contains raw JSON with a newline character"}],"isError":true}}
+        \\
+    );
+
+    // Values within the limit are still sent.
+    var reader: std.Io.Reader = .fixed(
+        \\{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"shallow"}}
+        \\
+    );
+    var aw: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer aw.deinit();
+    var stream: Transport.Stream = .init(&reader, &aw.writer);
+    var server: S = .init(&handler);
+    try server.run(std.testing.io, std.testing.allocator, &stream.transport);
+    try std.testing.expect(std.mem.startsWith(u8, aw.written(), "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[],\"structuredContent\":[[[["));
 }

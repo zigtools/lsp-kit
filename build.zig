@@ -24,59 +24,23 @@ pub fn build(b: *std.Build) void {
 
     // -------------------------------------------------------------------------
 
-    const exe = b.addExecutable(.{
-        .name = "lsp-codegen",
-        .root_module = b.addModule("lsp-codegen", .{
-            .root_source_file = b.path("src/codegen/codegen.zig"),
-            .target = b.graph.host,
-            .single_threaded = true,
-        }),
-    });
-    // The metaModel.json file should be removed once https://codeberg.org/ziglang/zig/issues/32041 has been resolved.
-    exe.root_module.addAnonymousImport("meta-model", .{ .root_source_file = b.path("metaModel.json") });
-
-    const run_codegen = b.addRunArtifact(exe);
-    const lsp_types_output_file = run_codegen.addOutputFileArg("lsp_types.zig");
-
-    const lsp_parser_module = b.addModule("lsp-parser", .{
-        .root_source_file = b.path("src/parser.zig"),
+    const mcp_module = b.addModule("blitzmcp", .{
+        .root_source_file = b.path("src/mcp.zig"),
         .target = target,
         .optimize = optimize,
     });
-
-    const lsp_types_module = b.addModule("lsp-types", .{
-        .root_source_file = lsp_types_output_file,
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "parser", .module = lsp_parser_module },
-        },
-    });
-
-    const lsp_module = b.addModule("lsp", .{
-        .root_source_file = b.path("src/lsp.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "parser", .module = lsp_parser_module },
-            .{ .name = "types", .module = lsp_types_module },
-        },
-    });
-
-    const codegen_step = b.step("codegen", "Install LSP types generated from the meta model");
-    codegen_step.dependOn(&b.addInstallFile(lsp_types_output_file, "lsp_types.zig").step);
 
     // -------------------------------- Autodoc --------------------------------
 
     const autodoc_exe = b.addObject(.{
-        .name = "lsp",
-        .root_module = lsp_module,
+        .name = "blitzmcp",
+        .root_module = mcp_module,
     });
 
     const install_docs = b.addInstallDirectory(.{
         .source_dir = autodoc_exe.getEmittedDocs(),
         .install_dir = .prefix,
-        .install_subdir = "doc/lsp-kit",
+        .install_subdir = "doc/blitzmcp",
     });
 
     const docs_step = b.step("docs", "Generate and install documentation");
@@ -84,75 +48,36 @@ pub fn build(b: *std.Build) void {
 
     // ------------------------------- Examples --------------------------------
 
-    const hello_server_exe = b.addExecutable(.{
-        .name = "hello-server",
+    const stdio_server_exe = b.addExecutable(.{
+        .name = "stdio-server",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/hello_server.zig"),
+            .root_source_file = b.path("examples/stdio_server.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "lsp", .module = lsp_module },
+                .{ .name = "blitzmcp", .module = mcp_module },
             },
         }),
         .use_llvm = use_llvm,
     });
-    b.installArtifact(hello_server_exe);
+    b.installArtifact(stdio_server_exe);
 
-    const install_hello_server_step = b.step("install-hello-server", "Install the hello-server example");
-    install_hello_server_step.dependOn(&b.addInstallArtifact(hello_server_exe, .{}).step);
+    const run_stdio_server = b.addRunArtifact(stdio_server_exe);
+    run_stdio_server.addPassthruArgs();
 
-    const hello_client_exe = b.addExecutable(.{
-        .name = "hello-client",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/hello_client.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "lsp", .module = lsp_module },
-            },
-        }),
-        .use_llvm = use_llvm,
-    });
-    b.installArtifact(hello_client_exe);
-
-    const run_hello_client = b.addRunArtifact(hello_client_exe);
-    run_hello_client.addPassthruArgs();
-
-    const run_hello_client_step = b.step("run-hello-client", "Run the hello-client example");
-    run_hello_client_step.dependOn(&run_hello_client.step);
-
-    const my_first_server = b.addExecutable(.{
-        .name = "my-first-server",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/my_first_server.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "lsp", .module = lsp_module },
-            },
-        }),
-        .use_llvm = use_llvm,
-    });
-    b.installArtifact(my_first_server);
+    const run_stdio_server_step = b.step("run-stdio-server", "Run the stdio-server example");
+    run_stdio_server_step.dependOn(&run_stdio_server.step);
 
     // --------------------------------- Tests ---------------------------------
 
-    const lsp_tests = b.addTest(.{
-        .root_module = lsp_module,
-        .filters = test_filters,
-        .use_llvm = use_llvm,
-    });
-
-    const lsp_parser_tests = b.addTest(.{
-        .name = "test parser",
-        .root_module = lsp_parser_module,
+    const mcp_tests = b.addTest(.{
+        .root_module = mcp_module,
         .filters = test_filters,
         .use_llvm = use_llvm,
     });
 
     const test_step = b.step("test", "Run all the tests");
-    test_step.dependOn(&b.addRunArtifact(lsp_tests).step);
-    test_step.dependOn(&b.addRunArtifact(lsp_parser_tests).step);
+    test_step.dependOn(&b.addRunArtifact(mcp_tests).step);
 
     // ----------------------------- Code Coverage -----------------------------
 
@@ -166,7 +91,7 @@ pub fn build(b: *std.Build) void {
     kcov_merge.addArg("--merge");
     const coverage_output = kcov_merge.addOutputDirectoryArg(".");
 
-    for ([_]*std.Build.Step.Compile{ lsp_tests, lsp_parser_tests }) |test_artifact| {
+    for ([_]*std.Build.Step.Compile{mcp_tests}) |test_artifact| {
         const kcov_collect = std.Build.Step.Run.create(b, "kcov collect coverage");
         kcov_collect.addFileArg(kcov_bin);
         kcov_collect.addArg("--collect-only");

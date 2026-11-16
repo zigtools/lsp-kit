@@ -2462,6 +2462,11 @@ test "Message.Request - null params" {
 }
 
 test "Message.Request - unknown method" {
+    comptime std.debug.assert(@import("builtin").zig_version.minor <= 18); // remove `empty_json_array` which was meant to support multiple zig versions
+
+    const empty_json_array = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, "[]", .{});
+    defer empty_json_array.deinit();
+
     try testMessage(.{
         .request = .{
             .id = .{ .string = "some-id" },
@@ -2478,7 +2483,7 @@ test "Message.Request - unknown method" {
     try testMessage(.{
         .request = .{
             .id = .{ .string = "some-id" },
-            .params = .{ .other = .{ .method = "some/method", .params = .{ .array = std.json.Array.init(std.testing.allocator) } } },
+            .params = .{ .other = .{ .method = "some/method", .params = empty_json_array.value } },
         },
     },
         \\{

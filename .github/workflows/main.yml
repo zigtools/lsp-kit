@@ -15,6 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        zig-version: [master, latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -23,7 +24,7 @@ jobs:
       - name: Setup Zig
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
-          version: master
+          version: ${{ matrix.zig-version }}
 
       - name: Setup kcov
         if: github.repository_owner == 'zigtools' && matrix.os == 'ubuntu-latest'
